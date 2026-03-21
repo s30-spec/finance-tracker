@@ -897,24 +897,74 @@
             console.log('切换按钮:', toggleBtn);
             
             if (toggleBtn) {
+                // 添加点击和触摸事件
                 toggleBtn.addEventListener('click', function(e) {
                     console.log('点击了切换按钮');
+                    e.preventDefault();
+                    toggleAuthForm();
+                });
+                toggleBtn.addEventListener('touchstart', function(e) {
+                    console.log('触摸了切换按钮');
                     e.preventDefault();
                     toggleAuthForm();
                 });
             }
             
             // 登录
-            document.getElementById('login-form').addEventListener('submit', async function(e) {
-                e.preventDefault();
-                await login();
-            });
+            const loginForm = document.getElementById('login-form');
+            if (loginForm) {
+                loginForm.addEventListener('submit', async function(e) {
+                    console.log('登录表单提交');
+                    e.preventDefault();
+                    try {
+                        await login();
+                    } catch (error) {
+                        console.error('登录出错:', error);
+                        showToast('登录过程中出错');
+                    }
+                });
+                
+                // 为登录按钮添加点击和触摸事件
+                const loginButton = loginForm.querySelector('button[type="submit"]');
+                if (loginButton) {
+                    loginButton.addEventListener('click', function(e) {
+                        console.log('点击了登录按钮');
+                        loginForm.dispatchEvent(new Event('submit'));
+                    });
+                    loginButton.addEventListener('touchstart', function(e) {
+                        console.log('触摸了登录按钮');
+                        loginForm.dispatchEvent(new Event('submit'));
+                    });
+                }
+            }
             
             // 注册
-            document.getElementById('register-form').addEventListener('submit', async function(e) {
-                e.preventDefault();
-                await register();
-            });
+            const registerForm = document.getElementById('register-form');
+            if (registerForm) {
+                registerForm.addEventListener('submit', async function(e) {
+                    console.log('注册表单提交');
+                    e.preventDefault();
+                    try {
+                        await register();
+                    } catch (error) {
+                        console.error('注册出错:', error);
+                        showToast('注册过程中出错');
+                    }
+                });
+                
+                // 为注册按钮添加点击和触摸事件
+                const registerButton = registerForm.querySelector('button[type="submit"]');
+                if (registerButton) {
+                    registerButton.addEventListener('click', function(e) {
+                        console.log('点击了注册按钮');
+                        registerForm.dispatchEvent(new Event('submit'));
+                    });
+                    registerButton.addEventListener('touchstart', function(e) {
+                        console.log('触摸了注册按钮');
+                        registerForm.dispatchEvent(new Event('submit'));
+                    });
+                }
+            }
         }
         
         // 切换登录/注册表单
