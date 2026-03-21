@@ -86,6 +86,15 @@
                 position: relative;
                 z-index: 10;
             }
+            
+            #auth-toggle-btn {
+                min-height: 44px;
+                min-width: 44px;
+                padding: 10px 15px;
+                display: inline-block;
+                position: relative;
+                z-index: 10;
+            }
         }
     </style>
 </head>
@@ -139,7 +148,7 @@
             <div class="mt-6 text-center">
                 <p class="text-gray-600">
                     <span id="auth-toggle-text">还没有账号？</span>
-                    <button id="auth-toggle-btn" class="text-primary font-medium hover:underline ml-1">立即注册</button>
+                    <button id="auth-toggle-btn" type="button" class="text-primary font-medium hover:underline ml-1 px-4 py-2 rounded-lg hover:bg-gray-100 transition-all-300">立即注册</button>
                 </p>
             </div>
         </div>
@@ -1773,6 +1782,12 @@
         
         // 保存交易
         async function saveTransaction() {
+            // 防止重复提交
+            const submitBtn = document.querySelector('#transaction-form button[type="submit"]');
+            if (submitBtn.disabled) {
+                return;
+            }
+            
             const amount = parseFloat(document.getElementById('amount').value);
             const category = document.getElementById('category').value;
             const date = document.getElementById('date').value;
@@ -1782,6 +1797,11 @@
                 alert('请填写所有必填字段');
                 return;
             }
+            
+            // 禁用按钮，显示加载状态
+            submitBtn.disabled = true;
+            const originalText = submitBtn.textContent;
+            submitBtn.textContent = '保存中...';
             
             const transaction = {
                 id: Date.now().toString(),
@@ -1793,10 +1813,11 @@
                 createdAt: new Date().toISOString()
             };
             
+            // 立即保存到本地
             transactions.push(transaction);
-            await saveUserData();
+            localStorage.setItem(`transactions_${currentUser.username}`, JSON.stringify(transactions));
             
-            // 重新渲染数据
+            // 立即更新界面
             renderDashboard();
             renderTransactions();
             updateCharts();
@@ -1804,13 +1825,28 @@
             // 关闭模态框
             closeTransactionModal();
             
-            // 检测 Firebase 连接状态
-            const isOnline = await checkFirebaseConnection();
-            if (isOnline) {
-                showToast('交易记录已保存（已同步到云端）');
-            } else {
-                showToast('交易记录已保存到本地（请开启 VPN 同步到云端）');
-            }
+            // 恢复按钮状态
+            submitBtn.disabled = false;
+            submitBtn.textContent = originalText;
+            
+            // 清空表单
+            document.getElementById('transaction-form').reset();
+            document.getElementById('date').value = new Date().toISOString().slice(0, 10);
+            
+            // 异步检测 Firebase 连接并同步
+            checkFirebaseConnection().then(isOnline => {
+                if (isOnline) {
+                    // 如果在线，同步到 Firebase
+                    saveUserData().then(() => {
+                        showToast('交易记录已保存（已同步到云端）');
+                    }).catch(() => {
+                        showToast('交易记录已保存到本地');
+                    });
+                } else {
+                    // 如果离线，只提示本地保存
+                    showToast('交易记录已保存到本地');
+                }
+            });
         }
         
         // 保存预算
