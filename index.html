@@ -68,6 +68,25 @@
                 transition: all 0.3s ease;
             }
         }
+        
+        /* 移动端优化 */
+        @media (max-width: 768px) {
+            button, input {
+                touch-action: manipulation;
+                -webkit-tap-highlight-color: transparent;
+            }
+            
+            button {
+                min-height: 44px;
+                min-width: 44px;
+            }
+            
+            #login-form button[type="submit"],
+            #register-form button[type="submit"] {
+                position: relative;
+                z-index: 10;
+            }
+        }
     </style>
 </head>
 <body class="bg-neutral min-h-screen font-sans text-dark">
@@ -143,6 +162,13 @@
                 <button id="theme-toggle" class="p-1.5 sm:p-2 rounded-full hover:bg-gray-100 transition-all-300">
                     <i class="fa fa-moon-o text-gray-600 text-sm sm:text-base"></i>
                 </button>
+                <button id="export-btn" class="p-1.5 sm:p-2 rounded-full hover:bg-gray-100 transition-all-300" title="导出数据">
+                    <i class="fa fa-download text-gray-600 text-sm sm:text-base"></i>
+                </button>
+                <button id="import-btn" class="p-1.5 sm:p-2 rounded-full hover:bg-gray-100 transition-all-300" title="导入数据">
+                    <i class="fa fa-upload text-gray-600 text-sm sm:text-base"></i>
+                </button>
+                <input type="file" id="import-file" class="hidden" accept=".json">
                 <button id="logout-btn" class="p-1.5 sm:p-2 rounded-full hover:bg-gray-100 transition-all-300" title="退出登录">
                     <i class="fa fa-sign-out text-gray-600 text-sm sm:text-base"></i>
                 </button>
@@ -728,6 +754,104 @@
         let savingsGoal = {};
         let paydaySettings = {}; // 发薪日设置
         
+        // 检测 Firebase 连接状态
+        async function checkFirebaseConnection() {
+            try {
+                if (typeof db === 'undefined') {
+                    return false;
+                }
+                // 尝试访问 Firestore，设置 2 秒超时
+                const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('timeout')), 2000);
+                });
+                await Promise.race([
+                    db.collection('test').doc('test').get(),
+                    timeoutPromise
+                ]);
+                return true;
+            } catch (error) {
+                console.log('Firebase 连接检测:', error.message);
+                return false;
+            }
+        }
+        
+        // 显示 VPN 提示
+        function showVPNAlert(action) {
+            alert(`⚠️ 需要 VPN\n\n${action}需要连接 VPN 才能同步到云端。\n\n请开启 VPN 后重试，否则数据将仅保存在本地，无法跨设备同步。`);
+        }
+        
+        // 自动同步本地数据到 Firebase
+        async function autoSyncToFirebase() {
+            if (!currentUser || typeof db === 'undefined') {
+                return;
+            }
+            
+            const isOnline = await checkFirebaseConnection();
+            if (!isOnline) {
+                console.log('Firebase 离线，跳过自动同步');
+                return;
+            }
+            
+            console.log('检测到 VPN 开启，开始自动同步...');
+            
+            try {
+                // 同步交易记录
+                const transactionsRef = db.collection('users').doc(currentUser.username).collection('transactions');
+                const existingSnapshot = await transactionsRef.get();
+                const existingIds = new Set(existingSnapshot.docs.map(doc => doc.data().id));
+                
+                let syncCount = 0;
+                for (const transaction of transactions) {
+                    if (!existingIds.has(transaction.id)) {
+                        await transactionsRef.doc(transaction.id).set(transaction);
+                        syncCount++;
+                    }
+                }
+                
+                // 同步预算
+                const budgetsRef = db.collection('users').doc(currentUser.username).collection('budgets');
+                const existingBudgetSnapshot = await budgetsRef.get();
+                const existingBudgetIds = new Set(existingBudgetSnapshot.docs.map(doc => doc.data().id));
+                
+                for (const budget of budgets) {
+                    if (!existingBudgetIds.has(budget.id)) {
+                        await budgetsRef.doc(budget.id).set(budget);
+                    }
+                }
+                
+                // 同步储蓄目标
+                const savingsRef = db.collection('users').doc(currentUser.username).collection('savingsGoal');
+                for (const [month, amount] of Object.entries(savingsGoal)) {
+                    await savingsRef.doc(month).set({ amount });
+                }
+                
+                // 同步发薪日设置
+                await db.collection('users').doc(currentUser.username).set({
+                    paydaySettings: paydaySettings
+                }, { merge: true });
+                
+                if (syncCount > 0) {
+                    console.log(`自动同步完成：同步了 ${syncCount} 条交易记录`);
+                    showToast(`检测到 VPN，已自动同步 ${syncCount} 条记录到云端`);
+                } else {
+                    console.log('所有数据已同步，无需更新');
+                }
+            } catch (error) {
+                console.error('自动同步失败:', error);
+            }
+        }
+        
+        // 定期检查并同步（每 30 秒检查一次）
+        function startAutoSync() {
+            // 立即执行一次
+            autoSyncToFirebase();
+            
+            // 每 30 秒检查一次
+            setInterval(() => {
+                autoSyncToFirebase();
+            }, 30000);
+        }
+        
         // 预定义分类
         const incomeCategories = ['工资', '奖金', '投资收益', '兼职', '礼金', '其他收入'];
         const expenseCategories = ['餐饮', '交通', '购物', '娱乐', '医疗', '教育', '住房', '其他支出'];
@@ -742,6 +866,9 @@
         // 当前选中的月份（用于预算）
         let currentBudgetMonth = null;
         
+        // 事件绑定标志（全局变量）
+        let authEventsBound = false;
+        
         // 初始化页面
         document.addEventListener('DOMContentLoaded', async function() {
             console.log('DOMContentLoaded 触发');
@@ -749,11 +876,11 @@
             // 初始化当前月份
             currentBudgetMonth = getCurrentMonth();
             
+            // 绑定登录/注册事件（先绑定，再检查登录状态）
+            bindAuthEvents();
+            
             // 检查登录状态
             await checkLoginStatus();
-            
-            // 绑定登录/注册事件
-            bindAuthEvents();
             
             console.log('初始化完成');
         });
@@ -764,6 +891,8 @@
             if (loggedInUser) {
                 currentUser = JSON.parse(loggedInUser);
                 await showApp();
+                // 登录成功后启动自动同步
+                startAutoSync();
             } else {
                 showAuth();
             }
@@ -773,8 +902,6 @@
         function showAuth() {
             document.getElementById('auth-container').classList.remove('hidden');
             document.getElementById('app-container').classList.add('hidden');
-            // 重新绑定登录/注册事件
-            bindAuthEvents();
         }
         
         // 显示主应用
@@ -820,41 +947,53 @@
         // 加载用户数据
         async function loadUserData() {
             try {
-                try {
-                    // 尝试从 Firestore 加载
-                    const transactionsSnapshot = await db.collection('users').doc(currentUser.username).collection('transactions').get();
-                    transactions = transactionsSnapshot.docs.map(doc => doc.data());
-                    
-                    const budgetSnapshot = await db.collection('users').doc(currentUser.username).collection('budgets').get();
-                    budgets = budgetSnapshot.docs.map(doc => doc.data());
-                    
-                    const savingsSnapshot = await db.collection('users').doc(currentUser.username).collection('savingsGoal').get();
-                    savingsGoal = {};
-                    savingsSnapshot.forEach(doc => {
-                        savingsGoal[doc.id] = doc.data().amount;
-                    });
-                    
-                    const paydaySnapshot = await db.collection('users').doc(currentUser.username).get();
-                    if (paydaySnapshot.exists) {
-                        const data = paydaySnapshot.data();
-                        paydaySettings = data.paydaySettings || { payday: 15 };
-                    } else {
-                        paydaySettings = { payday: 15 };
+                // 先从本地存储加载
+                transactions = JSON.parse(localStorage.getItem(`transactions_${currentUser.username}`)) || [];
+                budgets = JSON.parse(localStorage.getItem(`budgets_${currentUser.username}`)) || [];
+                savingsGoal = JSON.parse(localStorage.getItem(`savingsGoal_${currentUser.username}`)) || {};
+                paydaySettings = JSON.parse(localStorage.getItem(`paydaySettings_${currentUser.username}`)) || { payday: 15 };
+                
+                console.log('从本地存储加载数据成功');
+                
+                // 如果 Firebase 可用，尝试从 Firestore 加载并合并数据
+                if (typeof db !== 'undefined') {
+                    try {
+                        const transactionsSnapshot = await db.collection('users').doc(currentUser.username).collection('transactions').get();
+                        const firestoreTransactions = transactionsSnapshot.docs.map(doc => doc.data());
+                        if (firestoreTransactions.length > 0) {
+                            transactions = firestoreTransactions;
+                            localStorage.setItem(`transactions_${currentUser.username}`, JSON.stringify(transactions));
+                        }
+                        
+                        const budgetSnapshot = await db.collection('users').doc(currentUser.username).collection('budgets').get();
+                        const firestoreBudgets = budgetSnapshot.docs.map(doc => doc.data());
+                        if (firestoreBudgets.length > 0) {
+                            budgets = firestoreBudgets;
+                            localStorage.setItem(`budgets_${currentUser.username}`, JSON.stringify(budgets));
+                        }
+                        
+                        const savingsSnapshot = await db.collection('users').doc(currentUser.username).collection('savingsGoal').get();
+                        if (savingsSnapshot.docs.length > 0) {
+                            savingsGoal = {};
+                            savingsSnapshot.forEach(doc => {
+                                savingsGoal[doc.id] = doc.data().amount;
+                            });
+                            localStorage.setItem(`savingsGoal_${currentUser.username}`, JSON.stringify(savingsGoal));
+                        }
+                        
+                        const paydaySnapshot = await db.collection('users').doc(currentUser.username).get();
+                        if (paydaySnapshot.exists) {
+                            const data = paydaySnapshot.data();
+                            if (data.paydaySettings) {
+                                paydaySettings = data.paydaySettings;
+                                localStorage.setItem(`paydaySettings_${currentUser.username}`, JSON.stringify(paydaySettings));
+                            }
+                        }
+                        
+                        console.log('从 Firestore 加载数据成功');
+                    } catch (firebaseError) {
+                        console.log('Firebase 不可用，使用本地数据:', firebaseError.message);
                     }
-                    
-                    console.log('从 Firestore 加载数据成功');
-                    // 同时保存到本地作为备份
-                    localStorage.setItem(`transactions_${currentUser.username}`, JSON.stringify(transactions));
-                    localStorage.setItem(`budgets_${currentUser.username}`, JSON.stringify(budgets));
-                    localStorage.setItem(`savingsGoal_${currentUser.username}`, JSON.stringify(savingsGoal));
-                    localStorage.setItem(`paydaySettings_${currentUser.username}`, JSON.stringify(paydaySettings));
-                } catch (firebaseError) {
-                    console.log('Firebase 不可用，从本地存储加载数据');
-                    // 从本地存储加载
-                    transactions = JSON.parse(localStorage.getItem(`transactions_${currentUser.username}`)) || [];
-                    budgets = JSON.parse(localStorage.getItem(`budgets_${currentUser.username}`)) || [];
-                    savingsGoal = JSON.parse(localStorage.getItem(`savingsGoal_${currentUser.username}`)) || {};
-                    paydaySettings = JSON.parse(localStorage.getItem(`paydaySettings_${currentUser.username}`)) || { payday: 15 };
                 }
             } catch (error) {
                 console.error('加载数据失败:', error);
@@ -932,23 +1071,24 @@
             }
         }
         
-        // 绑定登录/注册事件
+        // 绑定登录/注册事件（只绑定一次）
         function bindAuthEvents() {
+            if (authEventsBound) {
+                console.log('登录/注册事件已经绑定，跳过');
+                return;
+            }
+            
             console.log('绑定登录/注册事件');
+            authEventsBound = true;
             
             // 切换登录/注册
             const toggleBtn = document.getElementById('auth-toggle-btn');
             console.log('切换按钮:', toggleBtn);
             
             if (toggleBtn) {
-                // 添加点击和触摸事件
+                // 添加点击事件
                 toggleBtn.addEventListener('click', function(e) {
                     console.log('点击了切换按钮');
-                    e.preventDefault();
-                    toggleAuthForm();
-                });
-                toggleBtn.addEventListener('touchstart', function(e) {
-                    console.log('触摸了切换按钮');
                     e.preventDefault();
                     toggleAuthForm();
                 });
@@ -964,22 +1104,9 @@
                         await login();
                     } catch (error) {
                         console.error('登录出错:', error);
-                        showToast('登录过程中出错');
+                        showToast('登录过程中出错: ' + error.message);
                     }
                 });
-                
-                // 为登录按钮添加点击和触摸事件
-                const loginButton = loginForm.querySelector('button[type="submit"]');
-                if (loginButton) {
-                    loginButton.addEventListener('click', function(e) {
-                        console.log('点击了登录按钮');
-                        loginForm.dispatchEvent(new Event('submit'));
-                    });
-                    loginButton.addEventListener('touchstart', function(e) {
-                        console.log('触摸了登录按钮');
-                        loginForm.dispatchEvent(new Event('submit'));
-                    });
-                }
             }
             
             // 注册
@@ -992,22 +1119,9 @@
                         await register();
                     } catch (error) {
                         console.error('注册出错:', error);
-                        showToast('注册过程中出错');
+                        showToast('注册过程中出错: ' + error.message);
                     }
                 });
-                
-                // 为注册按钮添加点击和触摸事件
-                const registerButton = registerForm.querySelector('button[type="submit"]');
-                if (registerButton) {
-                    registerButton.addEventListener('click', function(e) {
-                        console.log('点击了注册按钮');
-                        registerForm.dispatchEvent(new Event('submit'));
-                    });
-                    registerButton.addEventListener('touchstart', function(e) {
-                        console.log('触摸了注册按钮');
-                        registerForm.dispatchEvent(new Event('submit'));
-                    });
-                }
             }
         }
         
@@ -1025,12 +1139,33 @@
             
             if (loginForm.classList.contains('hidden')) {
                 console.log('显示登录表单');
+                // 从注册表单同步用户名和密码到登录表单
+                const registerUsername = document.getElementById('register-username').value;
+                const registerPassword = document.getElementById('register-password').value;
+                if (registerUsername) {
+                    document.getElementById('login-username').value = registerUsername;
+                }
+                if (registerPassword) {
+                    document.getElementById('login-password').value = registerPassword;
+                }
+                
                 loginForm.classList.remove('hidden');
                 registerForm.classList.add('hidden');
                 toggleText.textContent = '还没有账号？';
                 toggleBtn.textContent = '立即注册';
             } else {
                 console.log('显示注册表单');
+                // 从登录表单同步用户名和密码到注册表单
+                const loginUsername = document.getElementById('login-username').value;
+                const loginPassword = document.getElementById('login-password').value;
+                if (loginUsername) {
+                    document.getElementById('register-username').value = loginUsername;
+                }
+                if (loginPassword) {
+                    document.getElementById('register-password').value = loginPassword;
+                    document.getElementById('register-confirm-password').value = loginPassword;
+                }
+                
                 loginForm.classList.add('hidden');
                 registerForm.classList.remove('hidden');
                 toggleText.textContent = '已有账号？';
@@ -1043,63 +1178,75 @@
             const username = document.getElementById('login-username').value.trim();
             const password = document.getElementById('login-password').value;
             
-            try {
-                let userData = null;
-                let userExists = false;
-                
+            console.log('开始登录，用户名:', username);
+            
+            if (!username || !password) {
+                showToast('请输入用户名和密码');
+                return;
+            }
+            
+            // 检测 Firebase 连接
+            const isOnline = await checkFirebaseConnection();
+            console.log('Firebase 连接状态:', isOnline ? '在线' : '离线');
+            
+            // 先从本地存储检查（优先使用本地存储，速度更快）
+            const localUsers = JSON.parse(localStorage.getItem('localUsers')) || {};
+            console.log('本地存储中的所有用户:', Object.keys(localUsers));
+            
+            let userData = localUsers[username];
+            let userExists = !!userData;
+            
+            console.log('本地存储检查:', userExists ? '找到用户' : '未找到用户');
+            console.log('用户数据:', userData);
+            
+            // 如果本地没有且 Firebase 在线，尝试从 Firestore 获取
+            if (!userExists && isOnline) {
                 try {
-                    // 尝试从 Firestore 获取用户信息
                     const userDoc = await db.collection('users').doc(username).get();
-                    userExists = userDoc.exists;
-                    if (userExists) {
+                    if (userDoc.exists) {
                         userData = userDoc.data();
+                        userExists = true;
+                        // 保存到本地
+                        localUsers[username] = userData;
+                        localStorage.setItem('localUsers', JSON.stringify(localUsers));
+                        console.log('从 Firestore 获取用户成功');
                     }
                 } catch (firebaseError) {
-                    console.log('Firebase 不可用，尝试从本地存储获取用户信息');
-                    // 从本地存储获取用户信息
-                    const localUsers = JSON.parse(localStorage.getItem('localUsers')) || {};
-                    if (localUsers[username]) {
-                        userExists = true;
-                        userData = localUsers[username];
-                    }
-                }
-                
-                if (!userExists) {
-                    showToast('用户名不存在');
-                    return;
-                }
-                
-                if (userData.password !== password) {
-                    showToast('密码错误');
-                    return;
-                }
-                
-                // 保存登录状态
-                currentUser = { 
-                    username: username,
-                    password: password
-                };
-                localStorage.setItem('currentUser', JSON.stringify(currentUser));
-                
-                // 显示应用
-                await showApp();
-                showToast('登录成功');
-            } catch (error) {
-                console.error('登录失败:', error);
-                // 即使出错，也尝试使用本地存储登录
-                const username = document.getElementById('login-username').value.trim();
-                const password = document.getElementById('login-password').value;
-                const localUsers = JSON.parse(localStorage.getItem('localUsers')) || {};
-                
-                if (localUsers[username] && localUsers[username].password === password) {
-                    currentUser = { username, password };
-                    localStorage.setItem('currentUser', JSON.stringify(currentUser));
-                    await showApp();
-                    showToast('登录成功（本地模式）');
-                } else {
-                    showToast('登录失败，请检查用户名和密码');
+                    console.log('Firebase 获取失败:', firebaseError.message);
                 }
             }
+            
+            // 如果本地没有且 Firebase 离线，提示需要 VPN
+            if (!userExists && !isOnline) {
+                showVPNAlert('登录');
+                return;
+            }
+            
+            if (!userExists) {
+                showToast('用户名不存在，请先注册');
+                return;
+            }
+            
+            if (userData.password !== password) {
+                showToast('密码错误');
+                return;
+            }
+            
+            // 保存登录状态
+            currentUser = { 
+                username: username,
+                password: password
+            };
+            localStorage.setItem('currentUser', JSON.stringify(currentUser));
+            
+            console.log('登录成功，准备显示应用');
+            
+            // 显示应用
+            await showApp();
+            showToast('登录成功');
+            
+            // 登录成功后启动自动同步
+            startAutoSync();
         }
         
         // 注册
@@ -1107,6 +1254,15 @@
             const username = document.getElementById('register-username').value.trim();
             const password = document.getElementById('register-password').value;
             const confirmPassword = document.getElementById('register-confirm-password').value;
+            
+            console.log('开始注册，用户名:', username);
+            console.log('密码长度:', password.length);
+            console.log('确认密码长度:', confirmPassword.length);
+            
+            if (!username || !password) {
+                showToast('请输入用户名和密码');
+                return;
+            }
             
             if (password !== confirmPassword) {
                 showToast('两次输入的密码不一致');
@@ -1118,77 +1274,90 @@
                 return;
             }
             
-            try {
-                let userExists = false;
-                
+            // 检测 Firebase 连接
+            const isOnline = await checkFirebaseConnection();
+            console.log('Firebase 连接状态:', isOnline ? '在线' : '离线');
+            
+            // 如果 Firebase 离线，提示需要 VPN
+            if (!isOnline) {
+                showVPNAlert('注册');
+                return;
+            }
+            
+            // 先从本地存储检查
+            const localUsers = JSON.parse(localStorage.getItem('localUsers')) || {};
+            let userExists = !!localUsers[username];
+            
+            console.log('本地存储检查:', userExists ? '用户已存在' : '用户不存在');
+            
+            // 如果本地没有且 Firebase 在线，尝试从 Firestore 检查
+            if (!userExists && isOnline) {
                 try {
-                    // 尝试从 Firestore 检查用户是否存在
                     const userDoc = await db.collection('users').doc(username).get();
-                    userExists = userDoc.exists;
+                    if (userDoc.exists) {
+                        userExists = true;
+                        // 保存到本地
+                        localUsers[username] = userDoc.data();
+                        localStorage.setItem('localUsers', JSON.stringify(localUsers));
+                    }
                 } catch (firebaseError) {
-                    console.log('Firebase 不可用，尝试从本地存储检查用户');
-                    // 从本地存储检查用户
-                    const localUsers = JSON.parse(localStorage.getItem('localUsers')) || {};
-                    userExists = !!localUsers[username];
-                }
-                
-                if (userExists) {
-                    showToast('用户名已存在');
-                    return;
-                }
-                
-                // 创建用户数据
-                const userData = {
-                    username: username,
-                    password: password,
-                    createdAt: new Date().toISOString(),
-                    paydaySettings: { payday: 15 }
-                };
-                
-                try {
-                    // 尝试保存到 Firestore
-                    await db.collection('users').doc(username).set(userData);
-                } catch (firebaseError) {
-                    console.log('Firebase 不可用，保存到本地存储');
-                    // 保存到本地存储
-                    const localUsers = JSON.parse(localStorage.getItem('localUsers')) || {};
-                    localUsers[username] = userData;
-                    localStorage.setItem('localUsers', JSON.stringify(localUsers));
-                }
-                
-                // 自动登录
-                currentUser = { 
-                    username: username,
-                    password: password
-                };
-                localStorage.setItem('currentUser', JSON.stringify(currentUser));
-                
-                // 显示应用
-                await showApp();
-                showToast('注册成功');
-            } catch (error) {
-                console.error('注册失败:', error);
-                // 即使出错，也尝试在本地注册
-                const username = document.getElementById('register-username').value.trim();
-                const password = document.getElementById('register-password').value;
-                const localUsers = JSON.parse(localStorage.getItem('localUsers')) || {};
-                
-                if (!localUsers[username]) {
-                    localUsers[username] = {
-                        username: username,
-                        password: password,
-                        createdAt: new Date().toISOString(),
-                        paydaySettings: { payday: 15 }
-                    };
-                    localStorage.setItem('localUsers', JSON.stringify(localUsers));
-                    currentUser = { username, password };
-                    localStorage.setItem('currentUser', JSON.stringify(currentUser));
-                    await showApp();
-                    showToast('注册成功（本地模式）');
-                } else {
-                    showToast('注册失败，用户名已存在');
+                    console.log('Firebase 获取失败:', firebaseError.message);
                 }
             }
+            
+            if (userExists) {
+                showToast('用户名已存在');
+                return;
+            }
+            
+            // 创建用户数据
+            const userData = {
+                username: username,
+                password: password,
+                createdAt: new Date().toISOString(),
+                paydaySettings: { payday: 15 }
+            };
+            
+            // 保存到本地存储
+            localUsers[username] = userData;
+            localStorage.setItem('localUsers', JSON.stringify(localUsers));
+            console.log('用户已保存到本地存储');
+            
+            // 尝试保存到 Firestore（带超时）
+            if (typeof db !== 'undefined') {
+                try {
+                    // 创建超时 Promise
+                    const timeoutPromise = new Promise((_, reject) => {
+                        setTimeout(() => reject(new Error('Firebase 保存超时')), 3000);
+                    });
+                    
+                    // 竞争：Firebase 保存 vs 超时
+                    await Promise.race([
+                        db.collection('users').doc(username).set(userData),
+                        timeoutPromise
+                    ]);
+                    
+                    console.log('用户已保存到 Firestore');
+                } catch (firebaseError) {
+                    console.log('Firebase 不可用或超时，仅保存到本地:', firebaseError.message);
+                }
+            }
+            
+            // 自动登录
+            currentUser = { 
+                username: username,
+                password: password
+            };
+            localStorage.setItem('currentUser', JSON.stringify(currentUser));
+            
+            console.log('注册成功，准备显示应用');
+            
+            // 显示应用
+            await showApp();
+            showToast('注册成功');
+            
+            // 注册成功后启动自动同步
+            startAutoSync();
         }
         
         // 登出
@@ -1203,6 +1372,89 @@
                 showAuth();
                 showToast('已退出登录');
             }
+        }
+        
+        // 导出数据
+        function exportData() {
+            const data = {
+                username: currentUser.username,
+                transactions: transactions,
+                budgets: budgets,
+                savingsGoal: savingsGoal,
+                paydaySettings: paydaySettings,
+                exportDate: new Date().toISOString()
+            };
+            
+            const dataStr = JSON.stringify(data, null, 2);
+            const dataBlob = new Blob([dataStr], { type: 'application/json' });
+            
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `记账本数据_${currentUser.username}_${new Date().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            
+            showToast('数据导出成功');
+        }
+        
+        // 导入数据
+        async function importData(file) {
+            try {
+                const text = await file.text();
+                const data = JSON.parse(text);
+                
+                if (!data.transactions || !Array.isArray(data.transactions)) {
+                    showToast('数据格式错误：缺少交易记录');
+                    return;
+                }
+                
+                if (confirm(`确定要导入数据吗？这将合并 ${data.transactions.length} 条交易记录。`)) {
+                    // 合并交易记录（避免重复）
+                    const existingIds = new Set(transactions.map(t => t.id));
+                    let addedCount = 0;
+                    
+                    data.transactions.forEach(transaction => {
+                        if (!existingIds.has(transaction.id)) {
+                            transactions.push(transaction);
+                            addedCount++;
+                        }
+                    });
+                    
+                    // 合并预算
+                    if (data.budgets && Array.isArray(data.budgets)) {
+                        const existingBudgetIds = new Set(budgets.map(b => b.id));
+                        data.budgets.forEach(budget => {
+                            if (!existingBudgetIds.has(budget.id)) {
+                                budgets.push(budget);
+                            }
+                        });
+                    }
+                    
+                    // 合并储蓄目标
+                    if (data.savingsGoal) {
+                        Object.assign(savingsGoal, data.savingsGoal);
+                    }
+                    
+                    // 保存数据
+                    await saveUserData();
+                    
+                    // 刷新显示
+                    renderDashboard();
+                    renderTransactions();
+                    renderBudget();
+                    
+                    showToast(`成功导入 ${addedCount} 条交易记录`);
+                }
+            } catch (error) {
+                console.error('导入数据失败:', error);
+                showToast('导入数据失败：' + error.message);
+            }
+            
+            // 清空文件输入
+            document.getElementById('import-file').value = '';
         }
         
         // 初始化分类选项
@@ -1274,6 +1526,22 @@
             // 登出
             document.getElementById('logout-btn').addEventListener('click', function() {
                 logout();
+            });
+            
+            // 导出数据
+            document.getElementById('export-btn').addEventListener('click', function() {
+                exportData();
+            });
+            
+            // 导入数据
+            document.getElementById('import-btn').addEventListener('click', function() {
+                document.getElementById('import-file').click();
+            });
+            
+            document.getElementById('import-file').addEventListener('change', function(e) {
+                if (e.target.files.length > 0) {
+                    importData(e.target.files[0]);
+                }
             });
             
             // 标签页切换
@@ -1536,8 +1804,13 @@
             // 关闭模态框
             closeTransactionModal();
             
-            // 显示成功提示
-            showToast('交易记录已保存');
+            // 检测 Firebase 连接状态
+            const isOnline = await checkFirebaseConnection();
+            if (isOnline) {
+                showToast('交易记录已保存（已同步到云端）');
+            } else {
+                showToast('交易记录已保存到本地（请开启 VPN 同步到云端）');
+            }
         }
         
         // 保存预算
