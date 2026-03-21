@@ -1,0 +1,2959 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>元气记账本</title>
+    <!-- Tailwind CSS v3 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/12.11.0/firebase-auth-compat.js"></script>
+    <!-- 统一的 Tailwind 配置 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#4ECDC4', // 薄荷绿
+                        secondary: '#FF6B6B', // 珊瑚红
+                        neutral: '#F7FFF7', // 柔和白
+                        dark: '#292F36', // 深灰
+                        accent: '#FFD166', // 柔和黄
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                    animation: {
+                        'fade-in': 'fadeIn 0.3s ease-in-out',
+                        'slide-up': 'slideUp 0.4s ease-out',
+                    },
+                    keyframes: {
+                        fadeIn: {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' },
+                        },
+                        slideUp: {
+                            '0%': { transform: 'translateY(20px)', opacity: '0' },
+                            '100%': { transform: 'translateY(0)', opacity: '1' },
+                        },
+                    },
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .glass {
+                background: rgba(255, 255, 255, 0.25);
+                backdrop-filter: blur(4px);
+                -webkit-backdrop-filter: blur(4px);
+                border: 1px solid rgba(255, 255, 255, 0.18);
+            }
+            .card-shadow {
+                box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+            }
+            .text-shadow {
+                text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            }
+            .transition-all-300 {
+                transition: all 0.3s ease;
+            }
+        }
+    </style>
+</head>
+<body class="bg-neutral min-h-screen font-sans text-dark">
+    <!-- 登录/注册界面 -->
+    <div id="auth-container" class="fixed inset-0 bg-gradient-to-br from-primary to-secondary flex items-center justify-center z-50">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-8 animate-slide-up">
+            <div class="text-center mb-8">
+                <div class="w-20 h-20 bg-primary bg-opacity-20 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fa fa-money text-primary text-4xl"></i>
+                </div>
+                <h1 class="text-2xl font-bold text-gray-800">元气记账本</h1>
+                <p class="text-gray-500 mt-2">记录每一笔收支，掌控财务自由</p>
+            </div>
+            
+            <!-- 登录表单 -->
+            <form id="login-form" class="space-y-6">
+                <div>
+                    <label for="login-username" class="block text-sm font-medium text-gray-700 mb-2">用户名</label>
+                    <input type="text" id="login-username" class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" placeholder="请输入用户名" required>
+                </div>
+                <div>
+                    <label for="login-password" class="block text-sm font-medium text-gray-700 mb-2">密码</label>
+                    <input type="password" id="login-password" class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" placeholder="请输入密码" required>
+                </div>
+                <button type="submit" class="w-full bg-primary hover:bg-opacity-90 text-white py-3 rounded-lg font-medium transition-all-300 shadow-md hover:shadow-lg">
+                    登录
+                </button>
+            </form>
+            
+            <!-- 注册表单 -->
+            <form id="register-form" class="space-y-6 hidden">
+                <div>
+                    <label for="register-username" class="block text-sm font-medium text-gray-700 mb-2">用户名</label>
+                    <input type="text" id="register-username" class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" placeholder="请输入用户名" required>
+                </div>
+                <div>
+                    <label for="register-password" class="block text-sm font-medium text-gray-700 mb-2">密码</label>
+                    <input type="password" id="register-password" class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" placeholder="请输入密码（至少6位）" required minlength="6">
+                </div>
+                <div>
+                    <label for="register-confirm-password" class="block text-sm font-medium text-gray-700 mb-2">确认密码</label>
+                    <input type="password" id="register-confirm-password" class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent" placeholder="请再次输入密码" required>
+                </div>
+                <button type="submit" class="w-full bg-primary hover:bg-opacity-90 text-white py-3 rounded-lg font-medium transition-all-300 shadow-md hover:shadow-lg">
+                    注册
+                </button>
+            </form>
+            
+            <!-- 切换登录/注册 -->
+            <div class="mt-6 text-center">
+                <p class="text-gray-600">
+                    <span id="auth-toggle-text">还没有账号？</span>
+                    <button id="auth-toggle-btn" class="text-primary font-medium hover:underline ml-1">立即注册</button>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 主应用界面 -->
+    <div id="app-container" class="hidden">
+    <!-- 顶部导航栏 -->
+    <nav class="bg-white shadow-md sticky top-0 z-50">
+        <div class="container mx-auto px-4 py-2 sm:py-3 flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <i class="fa fa-money text-primary text-xl sm:text-2xl"></i>
+                <h1 class="text-lg sm:text-xl font-bold text-primary">元气记账本</h1>
+            </div>
+            <div class="flex items-center space-x-2 sm:space-x-4">
+                <div class="hidden md:flex items-center space-x-2 bg-gray-100 px-3 py-1.5 rounded-full">
+                    <i class="fa fa-user text-gray-600"></i>
+                    <span id="current-username" class="text-xs sm:text-sm font-medium text-gray-700">用户</span>
+                </div>
+                <button id="theme-toggle" class="p-1.5 sm:p-2 rounded-full hover:bg-gray-100 transition-all-300">
+                    <i class="fa fa-moon-o text-gray-600 text-sm sm:text-base"></i>
+                </button>
+                <button id="logout-btn" class="p-1.5 sm:p-2 rounded-full hover:bg-gray-100 transition-all-300" title="退出登录">
+                    <i class="fa fa-sign-out text-gray-600 text-sm sm:text-base"></i>
+                </button>
+                <button id="add-transaction-btn" class="bg-primary hover:bg-opacity-90 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-full flex items-center space-x-1 transition-all-300 shadow-md hover:shadow-lg">
+                    <i class="fa fa-plus text-sm sm:text-base"></i>
+                    <span class="hidden sm:inline text-xs sm:text-sm">记一笔</span>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主内容区 -->
+    <main class="container mx-auto px-4 py-6">
+        <!-- 标签页导航 -->
+        <div class="flex mb-6 bg-white rounded-lg shadow-md p-1 overflow-x-auto">
+            <button class="tab-btn flex-shrink-0 w-24 sm:w-1/4 py-3 px-4 rounded-md text-center font-medium transition-all-300 active bg-primary text-white" data-tab="dashboard">
+                <i class="fa fa-dashboard block sm:inline sm:mr-2 text-lg"></i>
+                <span class="block sm:inline text-xs sm:text-sm">概览</span>
+            </button>
+            <button class="tab-btn flex-shrink-0 w-24 sm:w-1/4 py-3 px-4 rounded-md text-center font-medium transition-all-300" data-tab="transactions">
+                <i class="fa fa-list-alt block sm:inline sm:mr-2 text-lg"></i>
+                <span class="block sm:inline text-xs sm:text-sm">明细</span>
+            </button>
+            <button class="tab-btn flex-shrink-0 w-24 sm:w-1/4 py-3 px-4 rounded-md text-center font-medium transition-all-300" data-tab="budget">
+                <i class="fa fa-pie-chart block sm:inline sm:mr-2 text-lg"></i>
+                <span class="block sm:inline text-xs sm:text-sm">预算</span>
+            </button>
+            <button class="tab-btn flex-shrink-0 w-24 sm:w-1/4 py-3 px-4 rounded-md text-center font-medium transition-all-300" data-tab="analysis">
+                <i class="fa fa-bar-chart block sm:inline sm:mr-2 text-lg"></i>
+                <span class="block sm:inline text-xs sm:text-sm">分析</span>
+            </button>
+        </div>
+
+        <!-- 概览页面 -->
+        <div id="dashboard-tab" class="tab-content animate-fade-in">
+            <!-- 账户余额卡片 -->
+            <div class="bg-white rounded-xl shadow-lg p-6 mb-6 animate-slide-up">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold">账户余额</h2>
+                    <span class="text-sm text-gray-500" id="current-date">2023年6月15日</span>
+                </div>
+                <div class="flex items-end space-x-2">
+                    <span class="text-3xl font-bold" id="total-balance">¥0.00</span>
+                    <span class="text-sm text-gray-500 mb-1">元</span>
+                </div>
+                <div class="grid grid-cols-2 gap-4 mt-6">
+                    <div class="bg-green-50 p-4 rounded-lg">
+                        <div class="text-sm text-gray-500 mb-1">本月收入</div>
+                        <div class="text-xl font-bold text-green-600" id="monthly-income">¥0.00</div>
+                    </div>
+                    <div class="bg-red-50 p-4 rounded-lg">
+                        <div class="text-sm text-gray-500 mb-1">本月支出</div>
+                        <div class="text-xl font-bold text-red-600" id="monthly-expense">¥0.00</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 图表区域 -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                <!-- 收支趋势图 -->
+                <div class="bg-white rounded-xl shadow-lg p-6 animate-slide-up" style="animation-delay: 0.1s;">
+                    <h2 class="text-xl font-bold mb-4">收支趋势</h2>
+                    <div class="h-64">
+                        <canvas id="trend-chart"></canvas>
+                    </div>
+                </div>
+                
+                <!-- 支出分类饼图 -->
+                <div class="bg-white rounded-xl shadow-lg p-6 animate-slide-up" style="animation-delay: 0.2s;">
+                    <h2 class="text-xl font-bold mb-4">支出分类</h2>
+                    <div class="h-64">
+                        <canvas id="category-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 消费周期预算 -->
+            <div class="bg-white rounded-xl shadow-lg p-6 mb-6 animate-slide-up" style="animation-delay: 0.3s;">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold">消费周期预算</h2>
+                    <div class="flex items-center space-x-2">
+                        <span class="text-sm text-gray-500" id="salary-period">本月</span>
+                        <button id="set-payday-btn" class="text-primary hover:underline text-sm">
+                            <i class="fa fa-calendar"></i> 设置发薪日
+                        </button>
+                        <button id="set-savings-btn" class="text-primary hover:underline text-sm">
+                            <i class="fa fa-cog"></i> 储蓄目标
+                        </button>
+                    </div>
+                </div>
+                <div class="mb-4 p-3 bg-gray-50 rounded-lg">
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm text-gray-600">当前消费周期</span>
+                        <span class="text-sm font-medium text-primary" id="cycle-info">--</span>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div class="bg-blue-50 p-4 rounded-lg">
+                        <div class="text-xs sm:text-sm text-gray-500 mb-1">周期总收入</div>
+                        <div class="text-lg sm:text-xl font-bold text-blue-600" id="salary-income">¥0.00</div>
+                    </div>
+                    <div class="bg-orange-50 p-4 rounded-lg">
+                        <div class="text-xs sm:text-sm text-gray-500 mb-1">储蓄目标</div>
+                        <div class="text-lg sm:text-xl font-bold text-orange-600" id="savings-goal">¥0.00</div>
+                    </div>
+                    <div class="bg-purple-50 p-4 rounded-lg">
+                        <div class="text-xs sm:text-sm text-gray-500 mb-1">每日可花</div>
+                        <div class="text-lg sm:text-xl font-bold text-purple-600" id="daily-expense">¥0.00</div>
+                    </div>
+                    <div class="bg-green-50 p-4 rounded-lg">
+                        <div class="text-xs sm:text-sm text-gray-500 mb-1">剩余天数</div>
+                        <div class="text-lg sm:text-xl font-bold text-green-600" id="remaining-days">0天</div>
+                    </div>
+                </div>
+                <div class="mt-6">
+                    <div class="flex justify-between text-sm text-gray-500 mb-1">
+                        <span>周期使用进度</span>
+                        <span id="salary-percentage">0%</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2.5">
+                        <div id="salary-progress" class="bg-primary h-2.5 rounded-full" style="width: 0%"></div>
+                    </div>
+                    <div id="salary-warning" class="mt-3 p-3 rounded-md hidden"></div>
+                </div>
+            </div>
+
+            <!-- 最近交易 -->
+            <div class="bg-white rounded-xl shadow-lg p-6 animate-slide-up" style="animation-delay: 0.4s;">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold">最近交易</h2>
+                    <button class="text-primary hover:underline text-sm" onclick="switchTab('transactions')">查看全部</button>
+                </div>
+                <div class="overflow-hidden">
+                    <div id="recent-transactions" class="divide-y divide-gray-100">
+                        <!-- 最近交易记录将在这里动态生成 -->
+                        <div class="py-3 text-center text-gray-500">暂无交易记录</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 交易明细页面 -->
+        <div id="transactions-tab" class="tab-content hidden animate-fade-in">
+            <!-- 筛选器 -->
+            <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">类型</label>
+                        <select id="filter-type" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary">
+                            <option value="all">全部</option>
+                            <option value="income">收入</option>
+                            <option value="expense">支出</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">分类</label>
+                        <select id="filter-category" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary">
+                            <option value="all">全部分类</option>
+                            <!-- 分类选项将在这里动态生成 -->
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">日期范围</label>
+                        <div class="flex space-x-2">
+                            <input type="month" id="filter-date" class="flex-1 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary">
+                            <button id="apply-filter" class="bg-primary text-white px-4 py-2 rounded-md hover:bg-opacity-90 transition-all-300">
+                                <i class="fa fa-filter mr-1"></i>筛选
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 交易列表 -->
+            <div class="bg-white rounded-xl shadow-lg overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">日期</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">分类</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">描述</th>
+                                <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">金额</th>
+                                <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="transactions-table" class="bg-white divide-y divide-gray-200">
+                            <!-- 交易记录将在这里动态生成 -->
+                            <tr>
+                                <td colspan="5" class="px-6 py-4 text-center text-gray-500">暂无交易记录</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="bg-gray-50 px-6 py-4 flex items-center justify-between">
+                    <div class="text-sm text-gray-700">
+                        显示 <span id="showing-records">0</span> 条记录
+                    </div>
+                    <div class="flex space-x-2">
+                        <button id="prev-page" class="px-3 py-1 border border-gray-300 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed">上一页</button>
+                        <button id="next-page" class="px-3 py-1 border border-gray-300 rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed">下一页</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 分析页面 -->
+        <div id="analysis-tab" class="tab-content hidden animate-fade-in">
+            <!-- 消费习惯分析 -->
+            <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+                <h2 class="text-xl font-bold mb-4">消费习惯分析</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- 消费时段分析 -->
+                    <div>
+                        <h3 class="text-lg font-semibold mb-3">消费时段分析</h3>
+                        <div class="h-64">
+                            <canvas id="time-chart"></canvas>
+                        </div>
+                    </div>
+                    
+                    <!-- 消费类别占比 -->
+                    <div>
+                        <h3 class="text-lg font-semibold mb-3">消费类别占比</h3>
+                        <div class="h-64">
+                            <canvas id="category-pie-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 消费趋势分析 -->
+            <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+                <h2 class="text-xl font-bold mb-4">消费趋势分析</h2>
+                <div class="h-80">
+                    <canvas id="trend-analysis-chart"></canvas>
+                </div>
+            </div>
+            
+            <!-- 消费建议 -->
+            <div class="bg-white rounded-xl shadow-lg p-6">
+                <div class="flex items-center mb-4">
+                    <i class="fa fa-lightbulb-o text-accent text-xl mr-2"></i>
+                    <h2 class="text-xl font-bold">消费建议</h2>
+                </div>
+                <div id="consumption-tips" class="space-y-3">
+                    <!-- 消费建议将在这里动态生成 -->
+                    <div class="p-3 bg-blue-50 rounded-md flex items-start">
+                        <i class="fa fa-info-circle text-blue-500 mt-1 mr-2"></i>
+                        <p class="text-sm text-gray-700">根据您的消费习惯，我们建议您可以适当控制餐饮支出，尝试自己做饭，这样可以节省更多资金。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 预算管理页面 -->
+        <div id="budget-tab" class="tab-content hidden animate-fade-in">
+            <!-- 预算概览 -->
+            <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold">本月预算</h2>
+                    <div>
+                        <select id="budget-month" class="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary">
+                            <!-- 月份选项将在这里动态生成 -->
+                        </select>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="bg-gray-50 p-4 rounded-lg">
+                        <div class="text-sm text-gray-500 mb-1">总预算</div>
+                        <div class="text-xl font-bold" id="total-budget">¥0.00</div>
+                    </div>
+                    <div class="bg-gray-50 p-4 rounded-lg">
+                        <div class="text-sm text-gray-500 mb-1">已使用</div>
+                        <div class="text-xl font-bold text-red-600" id="used-budget">¥0.00</div>
+                    </div>
+                    <div class="bg-gray-50 p-4 rounded-lg">
+                        <div class="text-sm text-gray-500 mb-1">剩余</div>
+                        <div class="text-xl font-bold text-green-600" id="remaining-budget">¥0.00</div>
+                    </div>
+                </div>
+                <div class="mt-6">
+                    <div class="flex justify-between text-sm text-gray-500 mb-1">
+                        <span>预算使用情况</span>
+                        <span id="budget-percentage">0%</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2.5">
+                        <div id="budget-progress" class="bg-primary h-2.5 rounded-full" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 分类预算 -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                <!-- 分类预算列表 -->
+                <div class="bg-white rounded-xl shadow-lg p-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-bold">分类预算</h2>
+                        <button id="add-category-budget" class="bg-primary hover:bg-opacity-90 text-white px-3 py-1 rounded-md text-sm flex items-center space-x-1 transition-all-300">
+                            <i class="fa fa-plus"></i>
+                            <span>添加</span>
+                        </button>
+                    </div>
+                    <div id="category-budgets" class="space-y-4">
+                        <!-- 分类预算将在这里动态生成 -->
+                        <div class="py-3 text-center text-gray-500">暂无分类预算</div>
+                    </div>
+                </div>
+                
+                <!-- 预算分析 -->
+                <div class="bg-white rounded-xl shadow-lg p-6">
+                    <h2 class="text-xl font-bold mb-4">预算分析</h2>
+                    <div class="h-64">
+                        <canvas id="budget-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 底部快捷操作栏 -->
+    <footer class="fixed bottom-0 left-0 right-0 bg-white shadow-lg border-t border-gray-200 py-3 px-4 z-40">
+        <div class="container mx-auto flex justify-around">
+            <button class="footer-btn flex flex-col items-center text-primary" data-tab="dashboard">
+                <i class="fa fa-dashboard text-xl"></i>
+                <span class="text-xs mt-1">概览</span>
+            </button>
+            <button class="footer-btn flex flex-col items-center text-gray-500" data-tab="transactions">
+                <i class="fa fa-list-alt text-xl"></i>
+                <span class="text-xs mt-1">明细</span>
+            </button>
+            <button class="footer-btn flex flex-col items-center text-gray-500" data-tab="budget">
+                <i class="fa fa-pie-chart text-xl"></i>
+                <span class="text-xs mt-1">预算</span>
+            </button>
+            <button class="footer-btn flex flex-col items-center text-gray-500" data-tab="analysis">
+                <i class="fa fa-bar-chart text-xl"></i>
+                <span class="text-xs mt-1">分析</span>
+            </button>
+        </div>
+    </footer>
+    </div>
+
+    <!-- 添加交易记录模态框 -->
+    <div id="transaction-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 animate-slide-up">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-xl font-bold">添加交易</h2>
+                    <button id="close-modal" class="text-gray-500 hover:text-gray-700">
+                        <i class="fa fa-times text-xl"></i>
+                    </button>
+                </div>
+                <form id="transaction-form">
+                    <!-- 交易类型选择 -->
+                    <div class="flex mb-6">
+                        <button type="button" id="type-income" class="flex-1 py-3 px-4 rounded-l-md text-center font-medium transition-all-300 bg-green-500 text-white">
+                            <i class="fa fa-plus-circle mr-2"></i>收入
+                        </button>
+                        <button type="button" id="type-expense" class="flex-1 py-3 px-4 rounded-r-md text-center font-medium transition-all-300 bg-gray-200 text-gray-700">
+                            <i class="fa fa-minus-circle mr-2"></i>支出
+                        </button>
+                    </div>
+                    
+                    <!-- 金额输入 -->
+                    <div class="mb-6">
+                        <label for="amount" class="block text-sm font-medium text-gray-700 mb-1">金额</label>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-500">¥</span>
+                            <input type="number" id="amount" name="amount" step="0.01" min="0" class="w-full border border-gray-300 rounded-md pl-8 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary" placeholder="0.00" required>
+                        </div>
+                    </div>
+                    
+                    <!-- 分类选择 -->
+                    <div class="mb-6">
+                        <label for="category" class="block text-sm font-medium text-gray-700 mb-1">分类</label>
+                        <select id="category" name="category" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary" required>
+                            <!-- 分类选项将在这里动态生成 -->
+                        </select>
+                    </div>
+                    
+                    <!-- 日期选择 -->
+                    <div class="mb-6">
+                        <label for="date" class="block text-sm font-medium text-gray-700 mb-1">日期</label>
+                        <input type="date" id="date" name="date" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary" required>
+                    </div>
+                    
+                    <!-- 描述输入 -->
+                    <div class="mb-6">
+                        <label for="description" class="block text-sm font-medium text-gray-700 mb-1">描述</label>
+                        <input type="text" id="description" name="description" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary" placeholder="添加描述（可选）">
+                    </div>
+                    
+                    <!-- 智能分类推荐 -->
+                    <div id="category-recommendation" class="mb-6 hidden">
+                        <div class="flex items-center mb-2">
+                            <i class="fa fa-lightbulb-o text-accent mr-2"></i>
+                            <span class="text-sm font-medium text-gray-700">智能推荐</span>
+                        </div>
+                        <div class="bg-gray-50 p-3 rounded-md">
+                            <p class="text-sm text-gray-600">根据您的消费习惯，我们推荐：</p>
+                            <div id="recommended-categories" class="flex flex-wrap gap-2 mt-2">
+                                <!-- 推荐分类将在这里动态生成 -->
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 提交按钮 -->
+                    <button type="submit" class="w-full bg-primary hover:bg-opacity-90 text-white py-3 rounded-md font-medium transition-all-300 shadow-md hover:shadow-lg">
+                        保存
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加分类预算模态框 -->
+    <div id="budget-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 animate-slide-up">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-xl font-bold">添加分类预算</h2>
+                    <button id="close-budget-modal" class="text-gray-500 hover:text-gray-700">
+                        <i class="fa fa-times text-xl"></i>
+                    </button>
+                </div>
+                <form id="budget-form">
+                    <!-- 分类选择 -->
+                    <div class="mb-6">
+                        <label for="budget-category" class="block text-sm font-medium text-gray-700 mb-1">分类</label>
+                        <select id="budget-category" name="category" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary" required>
+                            <!-- 分类选项将在这里动态生成 -->
+                        </select>
+                    </div>
+                    
+                    <!-- 预算金额输入 -->
+                    <div class="mb-6">
+                        <label for="budget-amount" class="block text-sm font-medium text-gray-700 mb-1">预算金额</label>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-500">¥</span>
+                            <input type="number" id="budget-amount" name="amount" step="0.01" min="0" class="w-full border border-gray-300 rounded-md pl-8 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary" placeholder="0.00" required>
+                        </div>
+                    </div>
+                    
+                    <!-- 月份选择 -->
+                    <div class="mb-6">
+                        <label for="budget-month-select" class="block text-sm font-medium text-gray-700 mb-1">月份</label>
+                        <input type="month" id="budget-month-select" name="month" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary" required>
+                    </div>
+                    
+                    <!-- 提交按钮 -->
+                    <button type="submit" class="w-full bg-primary hover:bg-opacity-90 text-white py-3 rounded-md font-medium transition-all-300 shadow-md hover:shadow-lg">
+                        保存
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 发薪日设置模态框 -->
+    <div id="payday-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 animate-slide-up">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-xl font-bold">设置发薪日</h2>
+                    <button id="close-payday-modal" class="text-gray-500 hover:text-gray-700">
+                        <i class="fa fa-times text-xl"></i>
+                    </button>
+                </div>
+                <form id="payday-form">
+                    <!-- 发薪日选择 -->
+                    <div class="mb-6">
+                        <label for="payday-date" class="block text-sm font-medium text-gray-700 mb-1">每月发薪日</label>
+                        <select id="payday-date" class="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary" required>
+                            <option value="">请选择发薪日</option>
+                            <!-- 1-31日选项将由JS生成 -->
+                        </select>
+                        <p class="text-xs text-gray-500 mt-2">系统将根据发薪日计算您的消费周期</p>
+                    </div>
+                    
+                    <!-- 周期预览 -->
+                    <div class="mb-6 bg-blue-50 p-4 rounded-lg">
+                        <div class="text-sm text-gray-500 mb-1">当前消费周期</div>
+                        <div class="text-lg font-bold text-blue-600" id="payday-preview">--</div>
+                    </div>
+                    
+                    <!-- 提交按钮 -->
+                    <button type="submit" class="w-full bg-primary hover:bg-opacity-90 text-white py-3 rounded-md font-medium transition-all-300 shadow-md hover:shadow-lg">
+                        保存设置
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 储蓄目标设置模态框 -->
+    <div id="savings-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 animate-slide-up">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-xl font-bold">设置储蓄目标</h2>
+                    <button id="close-savings-modal" class="text-gray-500 hover:text-gray-700">
+                        <i class="fa fa-times text-xl"></i>
+                    </button>
+                </div>
+                <form id="savings-form">
+                    <!-- 本月收入显示 -->
+                    <div class="mb-6 bg-blue-50 p-4 rounded-lg">
+                        <div class="text-sm text-gray-500 mb-1">本月总收入</div>
+                        <div class="text-xl font-bold text-blue-600" id="modal-monthly-income">¥0.00</div>
+                    </div>
+                    
+                    <!-- 储蓄目标输入 -->
+                    <div class="mb-6">
+                        <label for="savings-amount" class="block text-sm font-medium text-gray-700 mb-1">储蓄目标</label>
+                        <div class="relative">
+                            <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-500">¥</span>
+                            <input type="number" id="savings-amount" name="amount" step="0.01" min="0" class="w-full border border-gray-300 rounded-md pl-8 pr-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary" placeholder="0.00" required>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2">设置您本月想要储蓄的金额，剩余部分将用于日常消费</p>
+                    </div>
+                    
+                    <!-- 预计每日可花 -->
+                    <div class="mb-6 bg-purple-50 p-4 rounded-lg">
+                        <div class="text-sm text-gray-500 mb-1">预计每日可花</div>
+                        <div class="text-xl font-bold text-purple-600" id="modal-daily-allowance">¥0.00</div>
+                    </div>
+                    
+                    <!-- 提交按钮 -->
+                    <button type="submit" class="w-full bg-primary hover:bg-opacity-90 text-white py-3 rounded-md font-medium transition-all-300 shadow-md hover:shadow-lg">
+                        保存设置
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Firebase 配置
+        const firebaseConfig = {
+            apiKey: "AIzaSyAL02GVkzsmkUrPM0uzxscYI731WiBHxIg",
+            authDomain: "genkei-ledger.firebaseapp.com",
+            projectId: "genkei-ledger",
+            storageBucket: "genkei-ledger.firebasestorage.app",
+            messagingSenderId: "481235118730",
+            appId: "1:481235118730:web:d490b17d25bd70f562db73",
+            measurementId: "G-MQCBW1Q1T5"
+        };
+        
+        // 初始化 Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+        
+        // 用户数据
+        let currentUser = null;
+        
+        // 初始化数据（登录后加载）
+        let transactions = [];
+        let budgets = [];
+        let savingsGoal = {};
+        let paydaySettings = {}; // 发薪日设置
+        
+        // 预定义分类
+        const incomeCategories = ['工资', '奖金', '投资收益', '兼职', '礼金', '其他收入'];
+        const expenseCategories = ['餐饮', '交通', '购物', '娱乐', '医疗', '教育', '住房', '其他支出'];
+        
+        // 当前选中的交易类型
+        let currentTransactionType = 'income';
+        
+        // 当前页码
+        let currentPage = 1;
+        const recordsPerPage = 10;
+        
+        // 当前选中的月份（用于预算）
+        let currentBudgetMonth = null;
+        
+        // 初始化页面
+        document.addEventListener('DOMContentLoaded', async function() {
+            console.log('DOMContentLoaded 触发');
+            
+            // 初始化当前月份
+            currentBudgetMonth = getCurrentMonth();
+            
+            // 检查登录状态
+            await checkLoginStatus();
+            
+            // 绑定登录/注册事件
+            bindAuthEvents();
+            
+            console.log('初始化完成');
+        });
+        
+        // 检查登录状态
+        async function checkLoginStatus() {
+            const loggedInUser = localStorage.getItem('currentUser');
+            if (loggedInUser) {
+                currentUser = JSON.parse(loggedInUser);
+                await showApp();
+            } else {
+                showAuth();
+            }
+        }
+        
+        // 显示登录界面
+        function showAuth() {
+            document.getElementById('auth-container').classList.remove('hidden');
+            document.getElementById('app-container').classList.add('hidden');
+        }
+        
+        // 显示主应用
+        async function showApp() {
+            document.getElementById('auth-container').classList.add('hidden');
+            document.getElementById('app-container').classList.remove('hidden');
+            
+            // 加载用户数据
+            await loadUserData();
+            
+            // 设置当前日期
+            const now = new Date();
+            document.getElementById('current-date').textContent = formatDate(now);
+            
+            // 设置默认日期为今天
+            document.getElementById('date').valueAsDate = now;
+            
+            // 设置默认月份为当前月份
+            document.getElementById('filter-date').value = getCurrentMonth();
+            document.getElementById('budget-month-select').value = getCurrentMonth();
+            
+            // 显示用户名
+            document.getElementById('current-username').textContent = currentUser.username;
+            
+            // 初始化分类选项
+            initCategoryOptions();
+            
+            // 初始化月份选项
+            initMonthOptions();
+            
+            // 渲染数据
+            renderDashboard();
+            renderTransactions();
+            renderBudget();
+            
+            // 初始化图表
+            initCharts();
+            
+            // 绑定应用事件
+            bindAppEvents();
+        }
+        
+        // 加载用户数据
+        async function loadUserData() {
+            try {
+                // 从 Firestore 加载交易记录
+                const transactionsSnapshot = await db.collection('users').doc(currentUser.username).collection('transactions').get();
+                transactions = transactionsSnapshot.docs.map(doc => doc.data());
+                
+                // 从 Firestore 加载预算
+                const budgetSnapshot = await db.collection('users').doc(currentUser.username).collection('budgets').get();
+                budgets = budgetSnapshot.docs.map(doc => doc.data());
+                
+                // 从 Firestore 加载储蓄目标
+                const savingsSnapshot = await db.collection('users').doc(currentUser.username).collection('savingsGoal').get();
+                savingsSnapshot.forEach(doc => {
+                    savingsGoal[doc.id] = doc.data().amount;
+                });
+                
+                // 从 Firestore 加载发薪日设置
+                const paydaySnapshot = await db.collection('users').doc(currentUser.username).get();
+                if (paydaySnapshot.exists) {
+                    const data = paydaySnapshot.data();
+                    paydaySettings = data.paydaySettings || { payday: 15 };
+                } else {
+                    paydaySettings = { payday: 15 };
+                }
+            } catch (error) {
+                console.error('加载数据失败:', error);
+                // 如果 Firestore 加载失败，尝试从 localStorage 加载
+                transactions = JSON.parse(localStorage.getItem(`transactions_${currentUser.username}`)) || [];
+                budgets = JSON.parse(localStorage.getItem(`budgets_${currentUser.username}`)) || [];
+                savingsGoal = JSON.parse(localStorage.getItem(`savingsGoal_${currentUser.username}`)) || {};
+                paydaySettings = JSON.parse(localStorage.getItem(`paydaySettings_${currentUser.username}`)) || { payday: 15 };
+            }
+        }
+        
+        // 保存用户数据
+        async function saveUserData() {
+            try {
+                // 保存交易记录到 Firestore
+                const batch = db.batch();
+                const transactionsRef = db.collection('users').doc(currentUser.username).collection('transactions');
+                
+                // 删除旧数据
+                const oldTransactions = await transactionsRef.get();
+                oldTransactions.docs.forEach(doc => batch.delete(doc.ref));
+                
+                // 添加新数据
+                transactions.forEach(t => {
+                    const docRef = transactionsRef.doc(t.id);
+                    batch.set(docRef, t);
+                });
+                
+                // 保存预算
+                const budgetsRef = db.collection('users').doc(currentUser.username).collection('budgets');
+                const oldBudgets = await budgetsRef.get();
+                oldBudgets.docs.forEach(doc => batch.delete(doc.ref));
+                budgets.forEach(b => {
+                    const docRef = budgetsRef.doc(b.id);
+                    batch.set(docRef, b);
+                });
+                
+                // 保存储蓄目标
+                const savingsRef = db.collection('users').doc(currentUser.username).collection('savingsGoal');
+                const oldSavings = await savingsRef.get();
+                oldSavings.docs.forEach(doc => batch.delete(doc.ref));
+                Object.keys(savingsGoal).forEach(month => {
+                    const docRef = savingsRef.doc(month);
+                    batch.set(docRef, { amount: savingsGoal[month] });
+                });
+                
+                // 保存发薪日设置
+                const userRef = db.collection('users').doc(currentUser.username);
+                batch.set(userRef, { 
+                    username: currentUser.username,
+                    password: currentUser.password,
+                    paydaySettings: paydaySettings,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+                
+                await batch.commit();
+                
+                // 同时保存到 localStorage 作为备份
+                localStorage.setItem(`transactions_${currentUser.username}`, JSON.stringify(transactions));
+                localStorage.setItem(`budgets_${currentUser.username}`, JSON.stringify(budgets));
+                localStorage.setItem(`savingsGoal_${currentUser.username}`, JSON.stringify(savingsGoal));
+                localStorage.setItem(`paydaySettings_${currentUser.username}`, JSON.stringify(paydaySettings));
+            } catch (error) {
+                console.error('保存数据失败:', error);
+                // 如果 Firestore 保存失败，只保存到 localStorage
+                localStorage.setItem(`transactions_${currentUser.username}`, JSON.stringify(transactions));
+                localStorage.setItem(`budgets_${currentUser.username}`, JSON.stringify(budgets));
+                localStorage.setItem(`savingsGoal_${currentUser.username}`, JSON.stringify(savingsGoal));
+                localStorage.setItem(`paydaySettings_${currentUser.username}`, JSON.stringify(paydaySettings));
+            }
+        }
+        
+        // 绑定登录/注册事件
+        function bindAuthEvents() {
+            console.log('绑定登录/注册事件');
+            
+            // 切换登录/注册
+            const toggleBtn = document.getElementById('auth-toggle-btn');
+            console.log('切换按钮:', toggleBtn);
+            
+            if (toggleBtn) {
+                toggleBtn.addEventListener('click', function(e) {
+                    console.log('点击了切换按钮');
+                    e.preventDefault();
+                    toggleAuthForm();
+                });
+            }
+            
+            // 登录
+            document.getElementById('login-form').addEventListener('submit', async function(e) {
+                e.preventDefault();
+                await login();
+            });
+            
+            // 注册
+            document.getElementById('register-form').addEventListener('submit', async function(e) {
+                e.preventDefault();
+                await register();
+            });
+        }
+        
+        // 切换登录/注册表单
+        function toggleAuthForm() {
+            console.log('切换登录/注册表单');
+            
+            const loginForm = document.getElementById('login-form');
+            const registerForm = document.getElementById('register-form');
+            const toggleText = document.getElementById('auth-toggle-text');
+            const toggleBtn = document.getElementById('auth-toggle-btn');
+            
+            console.log('登录表单:', loginForm);
+            console.log('注册表单:', registerForm);
+            
+            if (loginForm.classList.contains('hidden')) {
+                console.log('显示登录表单');
+                loginForm.classList.remove('hidden');
+                registerForm.classList.add('hidden');
+                toggleText.textContent = '还没有账号？';
+                toggleBtn.textContent = '立即注册';
+            } else {
+                console.log('显示注册表单');
+                loginForm.classList.add('hidden');
+                registerForm.classList.remove('hidden');
+                toggleText.textContent = '已有账号？';
+                toggleBtn.textContent = '立即登录';
+            }
+        }
+        
+        // 登录
+        async function login() {
+            const username = document.getElementById('login-username').value.trim();
+            const password = document.getElementById('login-password').value;
+            
+            try {
+                // 从 Firestore 获取用户信息
+                const userDoc = await db.collection('users').doc(username).get();
+                
+                if (!userDoc.exists) {
+                    showToast('用户名不存在');
+                    return;
+                }
+                
+                const userData = userDoc.data();
+                
+                if (userData.password !== password) {
+                    showToast('密码错误');
+                    return;
+                }
+                
+                // 保存登录状态
+                currentUser = { 
+                    username: username,
+                    password: password
+                };
+                localStorage.setItem('currentUser', JSON.stringify(currentUser));
+                
+                // 显示应用
+                await showApp();
+                showToast('登录成功');
+            } catch (error) {
+                console.error('登录失败:', error);
+                showToast('登录失败，请检查网络连接');
+            }
+        }
+        
+        // 注册
+        async function register() {
+            const username = document.getElementById('register-username').value.trim();
+            const password = document.getElementById('register-password').value;
+            const confirmPassword = document.getElementById('register-confirm-password').value;
+            
+            if (password !== confirmPassword) {
+                showToast('两次输入的密码不一致');
+                return;
+            }
+            
+            if (password.length < 6) {
+                showToast('密码长度至少6位');
+                return;
+            }
+            
+            try {
+                // 检查用户是否已存在
+                const userDoc = await db.collection('users').doc(username).get();
+                
+                if (userDoc.exists) {
+                    showToast('用户名已存在');
+                    return;
+                }
+                
+                // 创建新用户
+                await db.collection('users').doc(username).set({
+                    username: username,
+                    password: password,
+                    createdAt: new Date().toISOString(),
+                    paydaySettings: { payday: 15 }
+                });
+                
+                // 自动登录
+                currentUser = { 
+                    username: username,
+                    password: password
+                };
+                localStorage.setItem('currentUser', JSON.stringify(currentUser));
+                
+                // 显示应用
+                await showApp();
+                showToast('注册成功');
+            } catch (error) {
+                console.error('注册失败:', error);
+                showToast('注册失败，请检查网络连接');
+            }
+        }
+        
+        // 登出
+        function logout() {
+            if (confirm('确定要退出登录吗？')) {
+                localStorage.removeItem('currentUser');
+                currentUser = null;
+                transactions = [];
+                budgets = [];
+                savingsGoal = {};
+                
+                showAuth();
+                showToast('已退出登录');
+            }
+        }
+        
+        // 初始化分类选项
+        function initCategoryOptions() {
+            const categorySelect = document.getElementById('category');
+            const budgetCategorySelect = document.getElementById('budget-category');
+            const filterCategorySelect = document.getElementById('filter-category');
+            
+            // 清空现有选项
+            categorySelect.innerHTML = '';
+            budgetCategorySelect.innerHTML = '';
+            filterCategorySelect.innerHTML = '<option value="all">全部分类</option>';
+            
+            // 添加收入分类
+            const incomeOptgroup = document.createElement('optgroup');
+            incomeOptgroup.label = '收入';
+            incomeCategories.forEach(category => {
+                const option = document.createElement('option');
+                option.value = category;
+                option.textContent = category;
+                option.dataset.type = 'income';
+                incomeOptgroup.appendChild(option.cloneNode(true));
+                budgetCategorySelect.appendChild(option.cloneNode(true));
+                filterCategorySelect.appendChild(option.cloneNode(true));
+            });
+            categorySelect.appendChild(incomeOptgroup);
+            
+            // 添加支出分类
+            const expenseOptgroup = document.createElement('optgroup');
+            expenseOptgroup.label = '支出';
+            expenseCategories.forEach(category => {
+                const option = document.createElement('option');
+                option.value = category;
+                option.textContent = category;
+                option.dataset.type = 'expense';
+                expenseOptgroup.appendChild(option.cloneNode(true));
+                budgetCategorySelect.appendChild(option.cloneNode(true));
+                filterCategorySelect.appendChild(option.cloneNode(true));
+            });
+            categorySelect.appendChild(expenseOptgroup);
+        }
+        
+        // 初始化月份选项
+        function initMonthOptions() {
+            const budgetMonthSelect = document.getElementById('budget-month');
+            budgetMonthSelect.innerHTML = '';
+            
+            // 生成过去6个月和未来6个月的选项
+            const now = new Date();
+            for (let i = -6; i <= 6; i++) {
+                const date = new Date(now.getFullYear(), now.getMonth() + i, 1);
+                const monthValue = date.toISOString().slice(0, 7);
+                const monthText = date.getFullYear() + '年' + (date.getMonth() + 1) + '月';
+                
+                const option = document.createElement('option');
+                option.value = monthValue;
+                option.textContent = monthText;
+                
+                if (monthValue === currentBudgetMonth) {
+                    option.selected = true;
+                }
+                
+                budgetMonthSelect.appendChild(option);
+            }
+        }
+        
+        // 绑定应用事件
+        function bindAppEvents() {
+            // 登出
+            document.getElementById('logout-btn').addEventListener('click', function() {
+                logout();
+            });
+            
+            // 标签页切换
+            document.querySelectorAll('.tab-btn, .footer-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const tab = this.dataset.tab;
+                    switchTab(tab);
+                });
+            });
+            
+            // 打开添加交易模态框
+            document.getElementById('add-transaction-btn').addEventListener('click', function() {
+                document.getElementById('transaction-modal').classList.remove('hidden');
+                document.body.style.overflow = 'hidden';
+            });
+            
+            // 关闭模态框
+            document.getElementById('close-modal').addEventListener('click', closeTransactionModal);
+            document.getElementById('close-budget-modal').addEventListener('click', closeBudgetModal);
+            
+            // 点击模态框外部关闭
+            document.getElementById('transaction-modal').addEventListener('click', function(e) {
+                if (e.target === this) {
+                    closeTransactionModal();
+                }
+            });
+            
+            document.getElementById('budget-modal').addEventListener('click', function(e) {
+                if (e.target === this) {
+                    closeBudgetModal();
+                }
+            });
+            
+            // 交易类型切换
+            document.getElementById('type-income').addEventListener('click', function() {
+                setTransactionType('income');
+            });
+            
+            document.getElementById('type-expense').addEventListener('click', function() {
+                setTransactionType('expense');
+            });
+            
+            // 提交交易表单
+            document.getElementById('transaction-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                saveTransaction();
+            });
+            
+            // 提交预算表单
+            document.getElementById('budget-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                saveBudget();
+            });
+            
+            // 筛选交易
+            document.getElementById('apply-filter').addEventListener('click', function() {
+                currentPage = 1;
+                renderTransactions();
+            });
+            
+            // 分页
+            document.getElementById('prev-page').addEventListener('click', function() {
+                if (currentPage > 1) {
+                    currentPage--;
+                    renderTransactions();
+                }
+            });
+            
+            document.getElementById('next-page').addEventListener('click', function() {
+                const filteredTransactions = getFilteredTransactions();
+                const totalPages = Math.ceil(filteredTransactions.length / recordsPerPage);
+                if (currentPage < totalPages) {
+                    currentPage++;
+                    renderTransactions();
+                }
+            });
+            
+            // 预算月份切换
+            document.getElementById('budget-month').addEventListener('change', function() {
+                currentBudgetMonth = this.value;
+                renderBudget();
+            });
+            
+            // 添加分类预算
+            document.getElementById('add-category-budget').addEventListener('click', function() {
+                document.getElementById('budget-modal').classList.remove('hidden');
+                document.body.style.overflow = 'hidden';
+            });
+            
+            // 打开发薪日设置模态框
+            document.getElementById('set-payday-btn').addEventListener('click', function() {
+                openPaydayModal();
+            });
+            
+            // 关闭发薪日模态框
+            document.getElementById('close-payday-modal').addEventListener('click', closePaydayModal);
+            
+            // 点击模态框外部关闭
+            document.getElementById('payday-modal').addEventListener('click', function(e) {
+                if (e.target === this) {
+                    closePaydayModal();
+                }
+            });
+            
+            // 提交发薪日表单
+            document.getElementById('payday-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                savePaydaySetting();
+            });
+            
+            // 发薪日选择时更新预览
+            document.getElementById('payday-date').addEventListener('change', function() {
+                updatePaydayPreview();
+            });
+            
+            // 打开储蓄目标设置模态框
+            document.getElementById('set-savings-btn').addEventListener('click', function() {
+                openSavingsModal();
+            });
+            
+            // 关闭储蓄目标模态框
+            document.getElementById('close-savings-modal').addEventListener('click', closeSavingsModal);
+            
+            // 点击模态框外部关闭
+            document.getElementById('savings-modal').addEventListener('click', function(e) {
+                if (e.target === this) {
+                    closeSavingsModal();
+                }
+            });
+            
+            // 提交储蓄目标表单
+            document.getElementById('savings-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                saveSavingsGoal();
+            });
+            
+            // 储蓄目标输入时实时更新预计每日可花
+            document.getElementById('savings-amount').addEventListener('input', function() {
+                updateModalDailyAllowance();
+            });
+            
+            // 描述输入时显示智能推荐
+            document.getElementById('description').addEventListener('input', function() {
+                if (this.value.length > 1) {
+                    showCategoryRecommendations(this.value);
+                } else {
+                    document.getElementById('category-recommendation').classList.add('hidden');
+                }
+            });
+            
+            // 主题切换
+            document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
+        }
+        
+        // 切换标签页
+        function switchTab(tab) {
+            // 更新标签页按钮状态
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                if (btn.dataset.tab === tab) {
+                    btn.classList.add('active', 'bg-primary', 'text-white');
+                    btn.classList.remove('bg-white', 'text-gray-700');
+                } else {
+                    btn.classList.remove('active', 'bg-primary', 'text-white');
+                    btn.classList.add('bg-white', 'text-gray-700');
+                }
+            });
+            
+            // 更新底部导航按钮状态
+            document.querySelectorAll('.footer-btn').forEach(btn => {
+                if (btn.dataset.tab === tab) {
+                    btn.classList.add('text-primary');
+                    btn.classList.remove('text-gray-500');
+                } else {
+                    btn.classList.remove('text-primary');
+                    btn.classList.add('text-gray-500');
+                }
+            });
+            
+            // 显示对应内容
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.add('hidden');
+            });
+            document.getElementById(`${tab}-tab`).classList.remove('hidden');
+            
+            // 如果切换到预算页面，重新渲染预算图表
+            if (tab === 'budget') {
+                renderBudgetChart();
+            }
+            
+            // 如果切换到分析页面，渲染分析图表
+            if (tab === 'analysis') {
+                renderAnalysisCharts();
+                generateConsumptionTips();
+            }
+        }
+        
+        // 设置交易类型
+        function setTransactionType(type) {
+            currentTransactionType = type;
+            
+            // 更新按钮样式
+            if (type === 'income') {
+                document.getElementById('type-income').classList.add('bg-green-500', 'text-white');
+                document.getElementById('type-income').classList.remove('bg-gray-200', 'text-gray-700');
+                document.getElementById('type-expense').classList.add('bg-gray-200', 'text-gray-700');
+                document.getElementById('type-expense').classList.remove('bg-red-500', 'text-white');
+            } else {
+                document.getElementById('type-expense').classList.add('bg-red-500', 'text-white');
+                document.getElementById('type-expense').classList.remove('bg-gray-200', 'text-gray-700');
+                document.getElementById('type-income').classList.add('bg-gray-200', 'text-gray-700');
+                document.getElementById('type-income').classList.remove('bg-green-500', 'text-white');
+            }
+            
+            // 更新分类选项
+            const categorySelect = document.getElementById('category');
+            const categories = type === 'income' ? incomeCategories : expenseCategories;
+            
+            // 清空现有选项
+            categorySelect.innerHTML = '';
+            
+            // 添加对应类型的分类
+            categories.forEach(category => {
+                const option = document.createElement('option');
+                option.value = category;
+                option.textContent = category;
+                categorySelect.appendChild(option);
+            });
+        }
+        
+        // 保存交易
+        async function saveTransaction() {
+            const amount = parseFloat(document.getElementById('amount').value);
+            const category = document.getElementById('category').value;
+            const date = document.getElementById('date').value;
+            const description = document.getElementById('description').value;
+            
+            if (!amount || !category || !date) {
+                alert('请填写所有必填字段');
+                return;
+            }
+            
+            const transaction = {
+                id: Date.now().toString(),
+                type: currentTransactionType,
+                amount: amount,
+                category: category,
+                date: date,
+                description: description,
+                createdAt: new Date().toISOString()
+            };
+            
+            transactions.push(transaction);
+            await saveUserData();
+            
+            // 重新渲染数据
+            renderDashboard();
+            renderTransactions();
+            updateCharts();
+            
+            // 关闭模态框
+            closeTransactionModal();
+            
+            // 显示成功提示
+            showToast('交易记录已保存');
+        }
+        
+        // 保存预算
+        async function saveBudget() {
+            const category = document.getElementById('budget-category').value;
+            const amount = parseFloat(document.getElementById('budget-amount').value);
+            const month = document.getElementById('budget-month-select').value;
+            
+            if (!category || !amount || !month) {
+                alert('请填写所有必填字段');
+                return;
+            }
+            
+            // 检查是否已存在该分类的预算
+            const existingIndex = budgets.findIndex(b => b.category === category && b.month === month);
+            
+            if (existingIndex >= 0) {
+                // 更新现有预算
+                budgets[existingIndex].amount = amount;
+            } else {
+                // 添加新预算
+                budgets.push({
+                    id: Date.now().toString(),
+                    category: category,
+                    amount: amount,
+                    month: month,
+                    createdAt: new Date().toISOString()
+                });
+            }
+            
+            await saveUserData();
+            
+            // 重新渲染预算
+            renderBudget();
+            
+            // 关闭模态框
+            closeBudgetModal();
+            
+            // 显示成功提示
+            showToast('预算已保存');
+        }
+        
+        // 删除交易
+        async function deleteTransaction(id) {
+            if (confirm('确定要删除这条交易记录吗？')) {
+                transactions = transactions.filter(t => t.id !== id);
+                await saveUserData();
+                
+                // 重新渲染数据
+                renderDashboard();
+                renderTransactions();
+                updateCharts();
+                
+                // 显示成功提示
+                showToast('交易记录已删除');
+            }
+        }
+        
+        // 删除预算
+        async function deleteBudget(id) {
+            if (confirm('确定要删除这个预算吗？')) {
+                budgets = budgets.filter(b => b.id !== id);
+                await saveUserData();
+                
+                // 重新渲染预算
+                renderBudget();
+                
+                // 显示成功提示
+                showToast('预算已删除');
+            }
+        }
+        
+        // 渲染仪表盘
+        function renderDashboard() {
+            // 计算总余额
+            const totalBalance = transactions.reduce((sum, t) => {
+                return sum + (t.type === 'income' ? t.amount : -t.amount);
+            }, 0);
+            document.getElementById('total-balance').textContent = formatCurrency(totalBalance);
+            
+            // 获取当前月份
+            const currentMonth = getCurrentMonth();
+            
+            // 计算本月收入
+            const monthlyIncome = transactions
+                .filter(t => t.type === 'income' && t.date.startsWith(currentMonth))
+                .reduce((sum, t) => sum + t.amount, 0);
+            document.getElementById('monthly-income').textContent = formatCurrency(monthlyIncome);
+            
+            // 计算本月支出
+            const monthlyExpense = transactions
+                .filter(t => t.type === 'expense' && t.date.startsWith(currentMonth))
+                .reduce((sum, t) => sum + t.amount, 0);
+            document.getElementById('monthly-expense').textContent = formatCurrency(monthlyExpense);
+            
+            // 渲染30天工资使用情况
+            renderSalaryUsage();
+            
+            // 渲染最近交易
+            renderRecentTransactions();
+        }
+        
+        // 获取消费周期信息
+        function getPaydayCycle() {
+            const payday = paydaySettings.payday || 15; // 默认15号
+            const now = new Date();
+            const currentDay = now.getDate();
+            const currentMonth = now.getMonth();
+            const currentYear = now.getFullYear();
+            
+            let cycleStart, cycleEnd, nextPayday;
+            
+            if (currentDay >= payday) {
+                // 已过发薪日，当前周期是本月发薪日到下月发薪日
+                cycleStart = new Date(currentYear, currentMonth, payday);
+                nextPayday = new Date(currentYear, currentMonth + 1, payday);
+            } else {
+                // 未过发薪日，当前周期是上月发薪日到本月发薪日
+                cycleStart = new Date(currentYear, currentMonth - 1, payday);
+                nextPayday = new Date(currentYear, currentMonth, payday);
+            }
+            
+            cycleEnd = new Date(nextPayday);
+            cycleEnd.setDate(cycleEnd.getDate() - 1); // 到下月发薪日前一天
+            
+            // 计算周期总天数
+            const totalDays = Math.ceil((nextPayday - cycleStart) / (1000 * 60 * 60 * 24));
+            
+            // 计算剩余天数（到今天结束）
+            const today = new Date(currentYear, currentMonth, currentDay);
+            const remainingDays = Math.ceil((nextPayday - today) / (1000 * 60 * 60 * 24));
+            
+            // 计算已过去天数
+            const passedDays = totalDays - remainingDays;
+            
+            return {
+                payday,
+                cycleStart,
+                cycleEnd,
+                nextPayday,
+                totalDays,
+                remainingDays,
+                passedDays,
+                cycleStartStr: formatDate(cycleStart),
+                cycleEndStr: formatDate(cycleEnd),
+                nextPaydayStr: formatDate(nextPayday)
+            };
+        }
+        
+        // 渲染消费周期预算
+        function renderSalaryUsage() {
+            const cycle = getPaydayCycle();
+            
+            // 计算周期内的总收入（从上个月发薪日到今天）
+            const cycleIncome = transactions
+                .filter(t => {
+                    if (t.type !== 'income') return false;
+                    const tDate = new Date(t.date);
+                    return tDate >= cycle.cycleStart && tDate <= new Date();
+                })
+                .reduce((sum, t) => sum + t.amount, 0);
+            
+            // 获取当前周期的储蓄目标（使用周期结束月份的目标）
+            const cycleEndMonth = cycle.cycleEnd.toISOString().slice(0, 7);
+            const cycleSavingsGoal = savingsGoal[cycleEndMonth] || 0;
+            
+            // 计算实际可支配金额
+            const disposableIncome = cycleIncome - cycleSavingsGoal;
+            
+            // 计算周期内已支出
+            const cycleExpense = transactions
+                .filter(t => {
+                    if (t.type !== 'expense') return false;
+                    const tDate = new Date(t.date);
+                    return tDate >= cycle.cycleStart && tDate <= new Date();
+                })
+                .reduce((sum, t) => sum + t.amount, 0);
+            
+            // 计算剩余可支配金额
+            const remainingDisposable = disposableIncome - cycleExpense;
+            
+            // 动态调整：根据剩余天数和剩余金额计算每日可花
+            let dailyAllowance;
+            if (cycle.remainingDays > 0 && remainingDisposable > 0) {
+                dailyAllowance = remainingDisposable / cycle.remainingDays;
+            } else if (cycle.remainingDays <= 0) {
+                dailyAllowance = 0;
+            } else {
+                dailyAllowance = 0;
+            }
+            
+            // 计算使用进度
+            const usagePercentage = disposableIncome > 0 ? Math.min(100, Math.round((cycleExpense / disposableIncome) * 100)) : 0;
+            
+            // 更新UI
+            document.getElementById('salary-income').textContent = formatCurrency(cycleIncome);
+            document.getElementById('savings-goal').textContent = formatCurrency(cycleSavingsGoal);
+            document.getElementById('daily-expense').textContent = formatCurrency(dailyAllowance);
+            document.getElementById('remaining-days').textContent = `${cycle.remainingDays}天`;
+            document.getElementById('salary-percentage').textContent = `${usagePercentage}%`;
+            document.getElementById('salary-progress').style.width = `${usagePercentage}%`;
+            document.getElementById('cycle-info').textContent = `${cycle.cycleStartStr} - ${cycle.cycleEndStr}`;
+            
+            // 根据使用情况更改进度条颜色
+            const progressBar = document.getElementById('salary-progress');
+            if (usagePercentage < 70) {
+                progressBar.className = 'bg-primary h-2.5 rounded-full';
+            } else if (usagePercentage < 90) {
+                progressBar.className = 'bg-accent h-2.5 rounded-full';
+            } else {
+                progressBar.className = 'bg-secondary h-2.5 rounded-full';
+            }
+            
+            // 显示工资使用提示
+            showSalaryWarning(usagePercentage, cycle.remainingDays, dailyAllowance, remainingDisposable, cycle.remainingDays);
+        }
+        
+        // 显示工资使用提示
+        function showSalaryWarning(usagePercentage, remainingDays, dailyAllowance, remainingDisposable, daysRemaining) {
+            const warningElement = document.getElementById('salary-warning');
+            
+            if (usagePercentage >= 90) {
+                warningElement.className = 'mt-3 p-3 rounded-md bg-red-50 border border-red-200 flex items-start';
+                warningElement.innerHTML = `
+                    <i class="fa fa-exclamation-triangle text-red-500 mt-1 mr-2"></i>
+                    <div>
+                        <p class="text-sm font-medium text-red-700">⚠️ 本月预算即将用完</p>
+                        <p class="text-xs text-red-600 mt-1">您已使用${usagePercentage}%的可支配金额，剩余${formatCurrency(remainingDisposable)}。按每天${formatCurrency(dailyAllowance)}的标准，还可以用${remainingDays}天。建议控制支出！</p>
+                    </div>
+                `;
+                warningElement.classList.remove('hidden');
+            } else if (usagePercentage >= 70) {
+                warningElement.className = 'mt-3 p-3 rounded-md bg-yellow-50 border border-yellow-200 flex items-start';
+                warningElement.innerHTML = `
+                    <i class="fa fa-bell text-yellow-500 mt-1 mr-2"></i>
+                    <div>
+                        <p class="text-sm font-medium text-yellow-700">💡 本月使用提醒</p>
+                        <p class="text-xs text-yellow-600 mt-1">您已使用${usagePercentage}%的可支配金额，剩余${formatCurrency(remainingDisposable)}。按每天${formatCurrency(dailyAllowance)}的标准，还可以用${remainingDays}天。注意合理规划！</p>
+                    </div>
+                `;
+                warningElement.classList.remove('hidden');
+            } else if (remainingDays < daysRemaining && remainingDays > 0) {
+                warningElement.className = 'mt-3 p-3 rounded-md bg-blue-50 border border-blue-200 flex items-start';
+                warningElement.innerHTML = `
+                    <i class="fa fa-info-circle text-blue-500 mt-1 mr-2"></i>
+                    <div>
+                        <p class="text-sm font-medium text-blue-700">📊 本月使用情况</p>
+                        <p class="text-xs text-blue-600 mt-1">您本月每天可花${formatCurrency(dailyAllowance)}，剩余${formatCurrency(remainingDisposable)}，还可以用${remainingDays}天（剩余${daysRemaining}天）。请合理消费！</p>
+                    </div>
+                `;
+                warningElement.classList.remove('hidden');
+            } else {
+                warningElement.classList.add('hidden');
+            }
+        }
+        
+        // 打开储蓄目标模态框
+        function openSavingsModal() {
+            const currentMonth = getCurrentMonth();
+            
+            // 计算当月总收入
+            const monthlyIncome = transactions
+                .filter(t => t.type === 'income' && t.date.startsWith(currentMonth))
+                .reduce((sum, t) => sum + t.amount, 0);
+            
+            // 获取当前储蓄目标
+            const currentSavingsGoal = savingsGoal[currentMonth] || 0;
+            
+            // 更新模态框显示
+            document.getElementById('modal-monthly-income').textContent = formatCurrency(monthlyIncome);
+            document.getElementById('savings-amount').value = currentSavingsGoal > 0 ? currentSavingsGoal : '';
+            
+            // 计算并显示预计每日可花
+            updateModalDailyAllowance();
+            
+            // 显示模态框
+            document.getElementById('savings-modal').classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+        }
+        
+        // 关闭储蓄目标模态框
+        function closeSavingsModal() {
+            document.getElementById('savings-modal').classList.add('hidden');
+            document.body.style.overflow = 'auto';
+        }
+        
+        // 打开发薪日设置模态框
+        function openPaydayModal() {
+            const select = document.getElementById('payday-date');
+            
+            // 生成1-31日选项
+            select.innerHTML = '<option value="">请选择发薪日</option>';
+            for (let i = 1; i <= 31; i++) {
+                const option = document.createElement('option');
+                option.value = i;
+                option.textContent = `${i}日`;
+                if (paydaySettings.payday === i) {
+                    option.selected = true;
+                }
+                select.appendChild(option);
+            }
+            
+            // 更新预览
+            updatePaydayPreview();
+            
+            // 显示模态框
+            document.getElementById('payday-modal').classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+        }
+        
+        // 关闭发薪日设置模态框
+        function closePaydayModal() {
+            document.getElementById('payday-modal').classList.add('hidden');
+            document.body.style.overflow = 'auto';
+        }
+        
+        // 更新发薪日预览
+        function updatePaydayPreview() {
+            const payday = parseInt(document.getElementById('payday-date').value) || 15;
+            const now = new Date();
+            const currentDay = now.getDate();
+            const currentMonth = now.getMonth();
+            const currentYear = now.getFullYear();
+            
+            let cycleStart, cycleEnd;
+            
+            if (currentDay >= payday) {
+                cycleStart = new Date(currentYear, currentMonth, payday);
+                cycleEnd = new Date(currentYear, currentMonth + 1, payday - 1);
+            } else {
+                cycleStart = new Date(currentYear, currentMonth - 1, payday);
+                cycleEnd = new Date(currentYear, currentMonth, payday - 1);
+            }
+            
+            document.getElementById('payday-preview').textContent = 
+                `${formatDate(cycleStart)} - ${formatDate(cycleEnd)}`;
+        }
+        
+        // 保存发薪日设置
+        async function savePaydaySetting() {
+            const payday = parseInt(document.getElementById('payday-date').value);
+            
+            if (!payday || payday < 1 || payday > 31) {
+                alert('请选择有效的发薪日');
+                return;
+            }
+            
+            // 保存设置
+            paydaySettings.payday = payday;
+            await saveUserData();
+            
+            // 重新渲染数据
+            renderDashboard();
+            
+            // 关闭模态框
+            closePaydayModal();
+            
+            // 显示成功提示
+            showToast('发薪日设置已保存');
+        }
+        
+        // 更新模态框中的预计每日可花
+        function updateModalDailyAllowance() {
+            const currentMonth = getCurrentMonth();
+            
+            // 计算当月总收入
+            const monthlyIncome = transactions
+                .filter(t => t.type === 'income' && t.date.startsWith(currentMonth))
+                .reduce((sum, t) => sum + t.amount, 0);
+            
+            // 获取输入的储蓄目标
+            const savingsAmount = parseFloat(document.getElementById('savings-amount').value) || 0;
+            
+            // 计算可支配金额
+            const disposableIncome = monthlyIncome - savingsAmount;
+            
+            // 计算每日可花
+            const dailyAllowance = disposableIncome / 30;
+            
+            // 更新显示
+            document.getElementById('modal-daily-allowance').textContent = formatCurrency(dailyAllowance);
+        }
+        
+        // 保存储蓄目标
+        async function saveSavingsGoal() {
+            const currentMonth = getCurrentMonth();
+            const savingsAmount = parseFloat(document.getElementById('savings-amount').value) || 0;
+            
+            // 保存储蓄目标
+            savingsGoal[currentMonth] = savingsAmount;
+            await saveUserData();
+            
+            // 重新渲染数据
+            renderDashboard();
+            
+            // 关闭模态框
+            closeSavingsModal();
+            
+            // 显示成功提示
+            showToast('储蓄目标已保存');
+        }
+        
+        // 渲染最近交易
+        function renderRecentTransactions() {
+            const container = document.getElementById('recent-transactions');
+            
+            // 按日期排序，最近的在前
+            const sortedTransactions = [...transactions].sort((a, b) => new Date(b.date) - new Date(a.date));
+            
+            // 取最近5条
+            const recentTransactions = sortedTransactions.slice(0, 5);
+            
+            if (recentTransactions.length === 0) {
+                container.innerHTML = '<div class="py-3 text-center text-gray-500">暂无交易记录</div>';
+                return;
+            }
+            
+            container.innerHTML = '';
+            
+            recentTransactions.forEach(transaction => {
+                const isIncome = transaction.type === 'income';
+                const amountClass = isIncome ? 'text-green-600' : 'text-red-600';
+                const amountSign = isIncome ? '+' : '-';
+                
+                const transactionElement = document.createElement('div');
+                transactionElement.className = 'py-3 flex items-center justify-between animate-fade-in';
+                transactionElement.innerHTML = `
+                    <div class="flex items-center">
+                        <div class="w-10 h-10 rounded-full bg-primary bg-opacity-20 flex items-center justify-center mr-3">
+                            <i class="fa ${getCategoryIcon(transaction.category)} text-primary"></i>
+                        </div>
+                        <div>
+                            <div class="font-medium">${transaction.category}</div>
+                            <div class="text-sm text-gray-500">${transaction.description || formatDate(new Date(transaction.date))}</div>
+                        </div>
+                    </div>
+                    <div class="${amountClass} font-bold">${amountSign}${formatCurrency(transaction.amount)}</div>
+                `;
+                
+                container.appendChild(transactionElement);
+            });
+        }
+        
+        // 渲染交易列表
+        function renderTransactions() {
+            const tableBody = document.getElementById('transactions-table');
+            const filteredTransactions = getFilteredTransactions();
+            
+            // 按日期排序，最近的在前
+            const sortedTransactions = [...filteredTransactions].sort((a, b) => new Date(b.date) - new Date(a.date));
+            
+            // 分页
+            const startIndex = (currentPage - 1) * recordsPerPage;
+            const endIndex = startIndex + recordsPerPage;
+            const paginatedTransactions = sortedTransactions.slice(startIndex, endIndex);
+            
+            // 更新显示记录数
+            document.getElementById('showing-records').textContent = paginatedTransactions.length;
+            
+            // 更新分页按钮状态
+            document.getElementById('prev-page').disabled = currentPage === 1;
+            document.getElementById('next-page').disabled = endIndex >= sortedTransactions.length;
+            
+            if (paginatedTransactions.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">暂无交易记录</td></tr>';
+                return;
+            }
+            
+            tableBody.innerHTML = '';
+            
+            paginatedTransactions.forEach(transaction => {
+                const isIncome = transaction.type === 'income';
+                const amountClass = isIncome ? 'text-green-600' : 'text-red-600';
+                const amountSign = isIncome ? '+' : '-';
+                
+                const row = document.createElement('tr');
+                row.className = 'hover:bg-gray-50 transition-all-300';
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm text-gray-900">${formatDate(new Date(transaction.date))}</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="flex items-center">
+                            <div class="w-8 h-8 rounded-full bg-primary bg-opacity-20 flex items-center justify-center mr-2">
+                                <i class="fa ${getCategoryIcon(transaction.category)} text-primary text-sm"></i>
+                            </div>
+                            <div class="text-sm text-gray-900">${transaction.category}</div>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4">
+                        <div class="text-sm text-gray-900">${transaction.description || '-'}</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-right">
+                        <div class="${amountClass} font-medium">${amountSign}${formatCurrency(transaction.amount)}</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <button class="text-red-600 hover:text-red-900" onclick="deleteTransaction('${transaction.id}')">
+                            <i class="fa fa-trash"></i>
+                        </button>
+                    </td>
+                `;
+                
+                tableBody.appendChild(row);
+            });
+        }
+        
+        // 渲染预算
+        function renderBudget() {
+            // 获取当前月份的预算
+            const monthBudgets = budgets.filter(b => b.month === currentBudgetMonth);
+            
+            // 计算总预算
+            const totalBudget = monthBudgets.reduce((sum, b) => sum + b.amount, 0);
+            document.getElementById('total-budget').textContent = formatCurrency(totalBudget);
+            
+            // 计算已使用的预算（支出）
+            const usedBudget = transactions
+                .filter(t => t.type === 'expense' && t.date.startsWith(currentBudgetMonth))
+                .reduce((sum, t) => sum + t.amount, 0);
+            document.getElementById('used-budget').textContent = formatCurrency(usedBudget);
+            
+            // 计算剩余预算
+            const remainingBudget = totalBudget - usedBudget;
+            document.getElementById('remaining-budget').textContent = formatCurrency(remainingBudget);
+            
+            // 计算预算使用百分比
+            const percentage = totalBudget > 0 ? Math.min(100, Math.round((usedBudget / totalBudget) * 100)) : 0;
+            document.getElementById('budget-percentage').textContent = `${percentage}%`;
+            document.getElementById('budget-progress').style.width = `${percentage}%`;
+            
+            // 根据使用情况更改进度条颜色
+            const progressBar = document.getElementById('budget-progress');
+            if (percentage < 70) {
+                progressBar.className = 'bg-primary h-2.5 rounded-full';
+            } else if (percentage < 90) {
+                progressBar.className = 'bg-accent h-2.5 rounded-full';
+            } else {
+                progressBar.className = 'bg-secondary h-2.5 rounded-full';
+            }
+            
+            // 显示预算提示语
+            showBudgetEncouragement(percentage, remainingBudget);
+            
+            // 渲染分类预算
+            renderCategoryBudgets();
+        }
+        
+        // 显示极端情况下的资金分配建议
+        function showExtremeBudgetAdvice() {
+            // 检查是否已存在极端情况提示元素
+            let adviceElement = document.getElementById('extreme-budget-advice');
+            if (!adviceElement) {
+                // 创建提示元素
+                adviceElement = document.createElement('div');
+                adviceElement.id = 'extreme-budget-advice';
+                adviceElement.className = 'mt-6 p-4 rounded-md bg-purple-50 border border-purple-200 animate-fade-in';
+                
+                // 插入到预算页面底部
+                const budgetTab = document.getElementById('budget-tab');
+                budgetTab.appendChild(adviceElement);
+            }
+            
+            adviceElement.innerHTML = `
+                <div class="flex items-start">
+                    <i class="fa fa-life-ring text-purple-500 mt-1 mr-3 text-lg"></i>
+                    <div>
+                        <h3 class="font-medium text-purple-700">紧急情况资金分配建议</h3>
+                        <p class="text-sm text-purple-600 mt-1">在资金紧张的情况下，建议按照以下比例分配剩余资金：</p>
+                        <div class="mt-3 grid grid-cols-2 gap-2">
+                            <div class="bg-white p-2 rounded shadow-sm">
+                                <div class="text-xs text-gray-500">必需品（食品/住房）</div>
+                                <div class="font-medium text-purple-700">50%</div>
+                            </div>
+                            <div class="bg-white p-2 rounded shadow-sm">
+                                <div class="text-xs text-gray-500">交通/通讯</div>
+                                <div class="font-medium text-purple-700">20%</div>
+                            </div>
+                            <div class="bg-white p-2 rounded shadow-sm">
+                                <div class="text-xs text-gray-500">医疗/保险</div>
+                                <div class="font-medium text-purple-700">15%</div>
+                            </div>
+                            <div class="bg-white p-2 rounded shadow-sm">
+                                <div class="text-xs text-gray-500">应急储备</div>
+                                <div class="font-medium text-purple-700">15%</div>
+                            </div>
+                        </div>
+                        <p class="text-xs text-purple-500 mt-3">* 此建议基于财务专家推荐的极端情况下的资金分配方案</p>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // 显示预算提示语
+        function showBudgetEncouragement(percentage, remainingBudget) {
+            // 检查是否已存在提示元素
+            let encouragementElement = document.getElementById('budget-encouragement');
+            if (!encouragementElement) {
+                // 创建提示元素
+                encouragementElement = document.createElement('div');
+                encouragementElement.id = 'budget-encouragement';
+                encouragementElement.className = 'mt-4 p-4 rounded-md animate-fade-in';
+                
+                // 插入到进度条下方
+                const progressContainer = document.querySelector('#budget-tab .mt-6');
+                progressContainer.appendChild(encouragementElement);
+            }
+            
+            // 根据预算使用情况显示不同的提示语
+            if (percentage >= 90) {
+                encouragementElement.className = 'mt-4 p-4 rounded-md bg-red-50 border border-red-200 animate-fade-in';
+                encouragementElement.innerHTML = `
+                    <div class="flex items-start">
+                        <i class="fa fa-exclamation-triangle text-red-500 mt-1 mr-3 text-lg"></i>
+                        <div>
+                            <h3 class="font-medium text-red-700">预算即将用完！</h3>
+                            <p class="text-sm text-red-600 mt-1">您已使用了${percentage}%的预算，剩余${formatCurrency(remainingBudget)}。坚持住，距离月底还有一段时间！</p>
+                            <button id="show-extreme-advice" class="mt-2 text-xs bg-red-100 hover:bg-red-200 text-red-700 px-2 py-1 rounded transition-all-300">查看紧急资金分配建议</button>
+                        </div>
+                    </div>
+                `;
+                
+                // 绑定紧急资金分配建议按钮事件
+                document.getElementById('show-extreme-advice').addEventListener('click', showExtremeBudgetAdvice);
+            } else if (percentage >= 70) {
+                encouragementElement.className = 'mt-4 p-4 rounded-md bg-yellow-50 border border-yellow-200 animate-fade-in';
+                encouragementElement.innerHTML = `
+                    <div class="flex items-start">
+                        <i class="fa fa-star text-yellow-500 mt-1 mr-3 text-lg"></i>
+                        <div>
+                            <h3 class="font-medium text-yellow-700">做得不错！</h3>
+                            <p class="text-sm text-yellow-600 mt-1">您已使用了${percentage}%的预算，还有${formatCurrency(remainingBudget)}可以支配。继续保持良好的消费习惯！</p>
+                        </div>
+                    </div>
+                `;
+            } else if (percentage >= 50) {
+                encouragementElement.className = 'mt-4 p-4 rounded-md bg-blue-50 border border-blue-200 animate-fade-in';
+                encouragementElement.innerHTML = `
+                    <div class="flex items-start">
+                        <i class="fa fa-trophy text-blue-500 mt-1 mr-3 text-lg"></i>
+                        <div>
+                            <h3 class="font-medium text-blue-700">太棒了！</h3>
+                            <p class="text-sm text-blue-600 mt-1">您的预算使用非常合理，已使用${percentage}%，剩余${formatCurrency(remainingBudget)}。您是理财小能手！</p>
+                        </div>
+                    </div>
+                `;
+            } else {
+                encouragementElement.className = 'mt-4 p-4 rounded-md bg-green-50 border border-green-200 animate-fade-in';
+                encouragementElement.innerHTML = `
+                    <div class="flex items-start">
+                        <i class="fa fa-leaf text-green-500 mt-1 mr-3 text-lg"></i>
+                        <div>
+                            <h3 class="font-medium text-green-700">超级节省！</h3>
+                            <p class="text-sm text-green-600 mt-1">您仅使用了${percentage}%的预算，剩余${formatCurrency(remainingBudget)}。继续保持这种优秀的理财习惯！</p>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+        
+        // 渲染分类预算
+        function renderCategoryBudgets() {
+            const container = document.getElementById('category-budgets');
+            
+            // 获取当前月份的预算
+            const monthBudgets = budgets.filter(b => b.month === currentBudgetMonth);
+            
+            if (monthBudgets.length === 0) {
+                container.innerHTML = '<div class="py-3 text-center text-gray-500">暂无分类预算</div>';
+                return;
+            }
+            
+            container.innerHTML = '';
+            
+            monthBudgets.forEach(budget => {
+                // 计算该分类的支出
+                const categoryExpense = transactions
+                    .filter(t => t.type === 'expense' && t.category === budget.category && t.date.startsWith(currentBudgetMonth))
+                    .reduce((sum, t) => sum + t.amount, 0);
+                
+                // 计算使用百分比
+                const percentage = budget.amount > 0 ? Math.min(100, Math.round((categoryExpense / budget.amount) * 100)) : 0;
+                
+                const budgetElement = document.createElement('div');
+                budgetElement.className = 'bg-gray-50 p-4 rounded-lg animate-fade-in';
+                budgetElement.innerHTML = `
+                    <div class="flex justify-between items-center mb-2">
+                        <div class="flex items-center">
+                            <div class="w-8 h-8 rounded-full bg-primary bg-opacity-20 flex items-center justify-center mr-2">
+                                <i class="fa ${getCategoryIcon(budget.category)} text-primary text-sm"></i>
+                            </div>
+                            <div class="font-medium">${budget.category}</div>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="text-sm font-medium ${categoryExpense > budget.amount ? 'text-red-600' : 'text-gray-700'}">
+                                ${formatCurrency(categoryExpense)} / ${formatCurrency(budget.amount)}
+                            </span>
+                            <button class="text-red-600 hover:text-red-900" onclick="deleteBudget('${budget.id}')">
+                                <i class="fa fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="flex justify-between text-xs text-gray-500 mb-1">
+                        <span>预算使用情况</span>
+                        <span>${percentage}%</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2">
+                        <div class="h-2 rounded-full ${percentage < 70 ? 'bg-primary' : percentage < 90 ? 'bg-accent' : 'bg-secondary'}" style="width: ${percentage}%"></div>
+                    </div>
+                `;
+                
+                container.appendChild(budgetElement);
+            });
+        }
+        
+        // 获取筛选后的交易
+        function getFilteredTransactions() {
+            const typeFilter = document.getElementById('filter-type').value;
+            const categoryFilter = document.getElementById('filter-category').value;
+            const dateFilter = document.getElementById('filter-date').value;
+            
+            return transactions.filter(transaction => {
+                // 类型筛选
+                if (typeFilter !== 'all' && transaction.type !== typeFilter) {
+                    return false;
+                }
+                
+                // 分类筛选
+                if (categoryFilter !== 'all' && transaction.category !== categoryFilter) {
+                    return false;
+                }
+                
+                // 日期筛选
+                if (dateFilter && !transaction.date.startsWith(dateFilter)) {
+                    return false;
+                }
+                
+                return true;
+            });
+        }
+        
+        // 初始化图表
+        function initCharts() {
+            // 趋势图
+            const trendCtx = document.getElementById('trend-chart').getContext('2d');
+            window.trendChart = new Chart(trendCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: '收入',
+                            data: [],
+                            borderColor: 'rgb(72, 187, 120)',
+                            backgroundColor: 'rgba(72, 187, 120, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        },
+                        {
+                            label: '支出',
+                            data: [],
+                            borderColor: 'rgb(245, 101, 101)',
+                            backgroundColor: 'rgba(245, 101, 101, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return '¥' + value;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // 分类饼图
+            const categoryCtx = document.getElementById('category-chart').getContext('2d');
+            window.categoryChart = new Chart(categoryCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        data: [],
+                        backgroundColor: [
+                            '#FF6384',
+                            '#36A2EB',
+                            '#FFCE56',
+                            '#4BC0C0',
+                            '#9966FF',
+                            '#FF9F40',
+                            '#FF6384',
+                            '#C9CBCF'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.raw || 0;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = Math.round((value / total) * 100);
+                                    return `${label}: ${formatCurrency(value)} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // 预算图表
+            const budgetCtx = document.getElementById('budget-chart').getContext('2d');
+            window.budgetChart = new Chart(budgetCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: '预算',
+                            data: [],
+                            backgroundColor: 'rgba(78, 205, 196, 0.7)',
+                            borderColor: 'rgb(78, 205, 196)',
+                            borderWidth: 1
+                        },
+                        {
+                            label: '支出',
+                            data: [],
+                            backgroundColor: 'rgba(255, 107, 107, 0.7)',
+                            borderColor: 'rgb(255, 107, 107)',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return '¥' + value;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // 更新图表数据
+            updateCharts();
+        }
+        
+        // 更新图表
+        function updateCharts() {
+            updateTrendChart();
+            updateCategoryChart();
+            renderBudgetChart();
+        }
+        
+        // 更新趋势图
+        function updateTrendChart() {
+            // 获取最近6个月的数据
+            const months = [];
+            const incomeData = [];
+            const expenseData = [];
+            
+            const now = new Date();
+            for (let i = 5; i >= 0; i--) {
+                const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                const month = date.toISOString().slice(0, 7);
+                const monthText = (date.getMonth() + 1) + '月';
+                
+                months.push(monthText);
+                
+                // 计算该月收入
+                const monthIncome = transactions
+                    .filter(t => t.type === 'income' && t.date.startsWith(month))
+                    .reduce((sum, t) => sum + t.amount, 0);
+                incomeData.push(monthIncome);
+                
+                // 计算该月支出
+                const monthExpense = transactions
+                    .filter(t => t.type === 'expense' && t.date.startsWith(month))
+                    .reduce((sum, t) => sum + t.amount, 0);
+                expenseData.push(monthExpense);
+            }
+            
+            window.trendChart.data.labels = months;
+            window.trendChart.data.datasets[0].data = incomeData;
+            window.trendChart.data.datasets[1].data = expenseData;
+            window.trendChart.update();
+        }
+        
+        // 更新分类饼图
+        function updateCategoryChart() {
+            // 获取当前月份
+            const currentMonth = getCurrentMonth();
+            
+            // 按分类统计支出
+            const categoryExpenses = {};
+            transactions
+                .filter(t => t.type === 'expense' && t.date.startsWith(currentMonth))
+                .forEach(t => {
+                    if (!categoryExpenses[t.category]) {
+                        categoryExpenses[t.category] = 0;
+                    }
+                    categoryExpenses[t.category] += t.amount;
+                });
+            
+            const labels = Object.keys(categoryExpenses);
+            const data = Object.values(categoryExpenses);
+            
+            window.categoryChart.data.labels = labels;
+            window.categoryChart.data.datasets[0].data = data;
+            window.categoryChart.update();
+        }
+        
+        // 渲染预算图表
+        function renderBudgetChart() {
+            // 获取当前月份的预算
+            const monthBudgets = budgets.filter(b => b.month === currentBudgetMonth);
+            
+            const labels = [];
+            const budgetData = [];
+            const expenseData = [];
+            
+            monthBudgets.forEach(budget => {
+                labels.push(budget.category);
+                budgetData.push(budget.amount);
+                
+                // 计算该分类的支出
+                const categoryExpense = transactions
+                    .filter(t => t.type === 'expense' && t.category === budget.category && t.date.startsWith(currentBudgetMonth))
+                    .reduce((sum, t) => sum + t.amount, 0);
+                
+                expenseData.push(categoryExpense);
+            });
+            
+            window.budgetChart.data.labels = labels;
+            window.budgetChart.data.datasets[0].data = budgetData;
+            window.budgetChart.data.datasets[1].data = expenseData;
+            window.budgetChart.update();
+        }
+        
+        // 显示分类推荐
+        function showCategoryRecommendations(description) {
+            const container = document.getElementById('recommended-categories');
+            container.innerHTML = '';
+            
+            // 获取当前类型的分类
+            const categories = currentTransactionType === 'income' ? incomeCategories : expenseCategories;
+            
+            // 简单的关键词匹配
+            const recommendations = categories.filter(category => {
+                // 转换为小写进行比较
+                const lowerCategory = category.toLowerCase();
+                const lowerDescription = description.toLowerCase();
+                
+                // 检查分类名是否包含描述中的单词
+                return lowerDescription.split(' ').some(word => lowerCategory.includes(word));
+            });
+            
+            if (recommendations.length === 0) {
+                // 如果没有匹配的，显示使用频率最高的分类
+                const categoryCounts = {};
+                transactions
+                    .filter(t => t.type === currentTransactionType)
+                    .forEach(t => {
+                        if (!categoryCounts[t.category]) {
+                            categoryCounts[t.category] = 0;
+                        }
+                        categoryCounts[t.category]++;
+                    });
+                
+                // 按使用频率排序
+                const sortedCategories = Object.keys(categoryCounts).sort((a, b) => categoryCounts[b] - categoryCounts[a]);
+                
+                // 取前3个
+                recommendations.push(...sortedCategories.slice(0, 3));
+            }
+            
+            // 最多显示3个推荐
+            const topRecommendations = recommendations.slice(0, 3);
+            
+            topRecommendations.forEach(category => {
+                const button = document.createElement('button');
+                button.className = 'px-3 py-1 bg-primary bg-opacity-10 text-primary rounded-full text-sm hover:bg-opacity-20 transition-all-300';
+                button.textContent = category;
+                button.addEventListener('click', function() {
+                    document.getElementById('category').value = category;
+                });
+                container.appendChild(button);
+            });
+            
+            // 显示推荐区域
+            document.getElementById('category-recommendation').classList.remove('hidden');
+        }
+        
+        // 关闭交易模态框
+        function closeTransactionModal() {
+            document.getElementById('transaction-modal').classList.add('hidden');
+            document.body.style.overflow = '';
+            
+            // 重置表单
+            document.getElementById('transaction-form').reset();
+            document.getElementById('date').valueAsDate = new Date();
+            setTransactionType('income');
+            document.getElementById('category-recommendation').classList.add('hidden');
+        }
+        
+        // 关闭预算模态框
+        function closeBudgetModal() {
+            document.getElementById('budget-modal').classList.add('hidden');
+            document.body.style.overflow = '';
+            
+            // 重置表单
+            document.getElementById('budget-form').reset();
+            document.getElementById('budget-month-select').value = getCurrentMonth();
+        }
+        
+        // 切换主题
+        function toggleTheme() {
+            const body = document.body;
+            const icon = document.getElementById('theme-toggle').querySelector('i');
+            
+            if (body.classList.contains('dark')) {
+                // 切换到亮色模式
+                body.classList.remove('dark');
+                body.classList.remove('bg-gray-900');
+                body.classList.add('bg-neutral');
+                icon.classList.remove('fa-sun-o');
+                icon.classList.add('fa-moon-o');
+                icon.classList.remove('text-yellow-400');
+                icon.classList.add('text-gray-600');
+            } else {
+                // 切换到暗色模式
+                body.classList.add('dark');
+                body.classList.remove('bg-neutral');
+                body.classList.add('bg-gray-900');
+                icon.classList.remove('fa-moon-o');
+                icon.classList.add('fa-sun-o');
+                icon.classList.remove('text-gray-600');
+                icon.classList.add('text-yellow-400');
+            }
+        }
+        
+        // 显示提示
+        function showToast(message) {
+            // 创建提示元素
+            const toast = document.createElement('div');
+            toast.className = 'fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-dark text-white px-4 py-2 rounded-lg shadow-lg z-50 animate-fade-in';
+            toast.textContent = message;
+            
+            // 添加到页面
+            document.body.appendChild(toast);
+            
+            // 2秒后移除
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'transition-opacity', 'duration-300');
+                setTimeout(() => {
+                    document.body.removeChild(toast);
+                }, 300);
+            }, 2000);
+        }
+        
+        // 获取分类图标
+        function getCategoryIcon(category) {
+            const iconMap = {
+                '工资': 'fa-money',
+                '奖金': 'fa-trophy',
+                '投资收益': 'fa-line-chart',
+                '兼职': 'fa-briefcase',
+                '礼金': 'fa-gift',
+                '餐饮': 'fa-cutlery',
+                '交通': 'fa-car',
+                '购物': 'fa-shopping-bag',
+                '娱乐': 'fa-film',
+                '医疗': 'fa-medkit',
+                '教育': 'fa-graduation-cap',
+                '住房': 'fa-home',
+                '其他收入': 'fa-plus-circle',
+                '其他支出': 'fa-minus-circle'
+            };
+            
+            return iconMap[category] || 'fa-circle';
+        }
+        
+        // 格式化货币
+        function formatCurrency(amount) {
+            return '¥' + amount.toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,');
+        }
+        
+        // 格式化日期
+        function formatDate(date) {
+            const year = date.getFullYear();
+            const month = date.getMonth() + 1;
+            const day = date.getDate();
+            
+            return `${year}年${month}月${day}日`;
+        }
+        
+        // 获取当前月份（YYYY-MM格式）
+        function getCurrentMonth() {
+            const now = new Date();
+            return now.toISOString().slice(0, 7);
+        }
+        
+        // 渲染分析图表
+        function renderAnalysisCharts() {
+            renderTimeChart();
+            renderCategoryPieChart();
+            renderTrendAnalysisChart();
+        }
+        
+        // 渲染消费时段分析图表
+        function renderTimeChart() {
+            // 按时间段统计消费
+            const timeSlots = {
+                '早晨 (6:00-12:00)': 0,
+                '下午 (12:00-18:00)': 0,
+                '晚上 (18:00-24:00)': 0,
+                '深夜 (0:00-6:00)': 0
+            };
+            
+            // 获取最近3个月的交易
+            const threeMonthsAgo = new Date();
+            threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+            const threeMonthsAgoStr = threeMonthsAgo.toISOString().split('T')[0];
+            
+            transactions
+                .filter(t => t.type === 'expense' && t.date >= threeMonthsAgoStr)
+                .forEach(t => {
+                    const hour = new Date(t.createdAt).getHours();
+                    if (hour >= 6 && hour < 12) {
+                        timeSlots['早晨 (6:00-12:00)'] += t.amount;
+                    } else if (hour >= 12 && hour < 18) {
+                        timeSlots['下午 (12:00-18:00)'] += t.amount;
+                    } else if (hour >= 18 && hour < 24) {
+                        timeSlots['晚上 (18:00-24:00)'] += t.amount;
+                    } else {
+                        timeSlots['深夜 (0:00-6:00)'] += t.amount;
+                    }
+                });
+            
+            // 获取图表上下文
+            const ctx = document.getElementById('time-chart').getContext('2d');
+            
+            // 销毁旧图表（如果存在）
+            if (window.timeChart) {
+                window.timeChart.destroy();
+            }
+            
+            // 创建新图表
+            window.timeChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(timeSlots),
+                    datasets: [{
+                        label: '消费金额',
+                        data: Object.values(timeSlots),
+                        backgroundColor: [
+                            'rgba(78, 205, 196, 0.7)',
+                            'rgba(255, 107, 107, 0.7)',
+                            'rgba(255, 206, 102, 0.7)',
+                            'rgba(153, 102, 255, 0.7)'
+                        ],
+                        borderColor: [
+                            'rgb(78, 205, 196)',
+                            'rgb(255, 107, 107)',
+                            'rgb(255, 206, 102)',
+                            'rgb(153, 102, 255)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return formatCurrency(context.raw);
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return '¥' + value;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // 渲染消费类别占比图表
+        function renderCategoryPieChart() {
+            // 按分类统计消费
+            const categoryExpenses = {};
+            
+            // 获取最近3个月的交易
+            const threeMonthsAgo = new Date();
+            threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+            const threeMonthsAgoStr = threeMonthsAgo.toISOString().split('T')[0];
+            
+            transactions
+                .filter(t => t.type === 'expense' && t.date >= threeMonthsAgoStr)
+                .forEach(t => {
+                    if (!categoryExpenses[t.category]) {
+                        categoryExpenses[t.category] = 0;
+                    }
+                    categoryExpenses[t.category] += t.amount;
+                });
+            
+            // 获取图表上下文
+            const ctx = document.getElementById('category-pie-chart').getContext('2d');
+            
+            // 销毁旧图表（如果存在）
+            if (window.categoryPieChart) {
+                window.categoryPieChart.destroy();
+            }
+            
+            // 创建新图表
+            window.categoryPieChart = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: Object.keys(categoryExpenses),
+                    datasets: [{
+                        data: Object.values(categoryExpenses),
+                        backgroundColor: [
+                            '#FF6384',
+                            '#36A2EB',
+                            '#FFCE56',
+                            '#4BC0C0',
+                            '#9966FF',
+                            '#FF9F40',
+                            '#FF6384',
+                            '#C9CBCF'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                boxWidth: 12
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.raw || 0;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = Math.round((value / total) * 100);
+                                    return `${label}: ${formatCurrency(value)} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // 渲染消费趋势分析图表
+        function renderTrendAnalysisChart() {
+            // 获取最近6个月的数据
+            const months = [];
+            const categoryData = {};
+            
+            // 初始化分类数据
+            expenseCategories.forEach(category => {
+                categoryData[category] = [];
+            });
+            
+            // 生成最近6个月的月份标签
+            const now = new Date();
+            for (let i = 5; i >= 0; i--) {
+                const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                const month = date.toISOString().slice(0, 7);
+                const monthText = (date.getMonth() + 1) + '月';
+                
+                months.push(monthText);
+                
+                // 初始化该月各分类数据
+                expenseCategories.forEach(category => {
+                    categoryData[category].push(0);
+                });
+            }
+            
+            // 统计各月各分类的消费
+            transactions
+                .filter(t => t.type === 'expense')
+                .forEach(t => {
+                    const month = t.date.slice(0, 7);
+                    const monthIndex = months.findIndex(m => {
+                        const monthNum = parseInt(m);
+                        const transactionMonthNum = parseInt(month.split('-')[1]);
+                        return monthNum === transactionMonthNum;
+                    });
+                    
+                    if (monthIndex !== -1 && categoryData[t.category]) {
+                        categoryData[t.category][monthIndex] += t.amount;
+                    }
+                });
+            
+            // 生成数据集
+            const datasets = expenseCategories.map((category, index) => {
+                const colors = [
+                    '#FF6384',
+                    '#36A2EB',
+                    '#FFCE56',
+                    '#4BC0C0',
+                    '#9966FF',
+                    '#FF9F40',
+                    '#FF6384',
+                    '#C9CBCF'
+                ];
+                
+                return {
+                    label: category,
+                    data: categoryData[category],
+                    backgroundColor: colors[index % colors.length] + '20',
+                    borderColor: colors[index % colors.length],
+                    borderWidth: 2,
+                    tension: 0.4,
+                    pointRadius: 3
+                };
+            });
+            
+            // 获取图表上下文
+            const ctx = document.getElementById('trend-analysis-chart').getContext('2d');
+            
+            // 销毁旧图表（如果存在）
+            if (window.trendAnalysisChart) {
+                window.trendAnalysisChart.destroy();
+            }
+            
+            // 创建新图表
+            window.trendAnalysisChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: months,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                boxWidth: 12
+                            }
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.dataset.label || '';
+                                    const value = context.raw || 0;
+                                    return `${label}: ${formatCurrency(value)}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return '¥' + value;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // 生成消费建议
+        function generateConsumptionTips() {
+            const container = document.getElementById('consumption-tips');
+            
+            // 获取最近3个月的交易
+            const threeMonthsAgo = new Date();
+            threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+            const threeMonthsAgoStr = threeMonthsAgo.toISOString().split('T')[0];
+            
+            const recentExpenses = transactions.filter(t => t.type === 'expense' && t.date >= threeMonthsAgoStr);
+            
+            // 如果交易记录太少，显示通用建议
+            if (recentExpenses.length < 5) {
+                container.innerHTML = `
+                    <div class="p-3 bg-blue-50 rounded-md flex items-start">
+                        <i class="fa fa-info-circle text-blue-500 mt-1 mr-2"></i>
+                        <p class="text-sm text-gray-700">您的交易记录较少，建议继续记录一段时间，我们将为您提供更准确的消费建议。</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // 按分类统计消费
+            const categoryExpenses = {};
+            recentExpenses.forEach(t => {
+                if (!categoryExpenses[t.category]) {
+                    categoryExpenses[t.category] = 0;
+                }
+                categoryExpenses[t.category] += t.amount;
+            });
+            
+            // 计算总消费
+            const totalExpense = recentExpenses.reduce((sum, t) => sum + t.amount, 0);
+            
+            // 计算日均消费
+            const days = (new Date() - threeMonthsAgo) / (1000 * 60 * 60 * 24);
+            const dailyExpense = totalExpense / days;
+            
+            // 找出消费最多的分类
+            const topCategory = Object.keys(categoryExpenses).reduce((a, b) => 
+                categoryExpenses[a] > categoryExpenses[b] ? a : b
+            );
+            
+            // 计算各类别占比
+            const categoryPercentages = {};
+            Object.keys(categoryExpenses).forEach(category => {
+                categoryPercentages[category] = (categoryExpenses[category] / totalExpense) * 100;
+            });
+            
+            // 生成建议
+            let tips = [];
+            
+            // 根据消费最高的类别给出建议
+            if (topCategory === '餐饮' && categoryPercentages[topCategory] > 30) {
+                tips.push(`
+                    <div class="p-3 bg-red-50 rounded-md flex items-start">
+                        <i class="fa fa-cutlery text-red-500 mt-1 mr-2"></i>
+                        <div>
+                            <p class="text-sm font-medium text-red-700">餐饮支出占比过高</p>
+                            <p class="text-xs text-red-600 mt-1">您的餐饮支出占总支出的${Math.round(categoryPercentages[topCategory])}%，建议尝试自己做饭，既健康又省钱。</p>
+                        </div>
+                    </div>
+                `);
+            } else if (topCategory === '购物' && categoryPercentages[topCategory] > 25) {
+                tips.push(`
+                    <div class="p-3 bg-purple-50 rounded-md flex items-start">
+                        <i class="fa fa-shopping-bag text-purple-500 mt-1 mr-2"></i>
+                        <div>
+                            <p class="text-sm font-medium text-purple-700">购物支出占比过高</p>
+                            <p class="text-xs text-purple-600 mt-1">您的购物支出占总支出的${Math.round(categoryPercentages[topCategory])}%，建议购物前列清单，避免冲动消费。</p>
+                        </div>
+                    </div>
+                `);
+            } else if (topCategory === '娱乐' && categoryPercentages[topCategory] > 20) {
+                tips.push(`
+                    <div class="p-3 bg-blue-50 rounded-md flex items-start">
+                        <i class="fa fa-film text-blue-500 mt-1 mr-2"></i>
+                        <div>
+                            <p class="text-sm font-medium text-blue-700">娱乐支出占比过高</p>
+                            <p class="text-xs text-blue-600 mt-1">您的娱乐支出占总支出的${Math.round(categoryPercentages[topCategory])}%，建议寻找一些免费或低成本的娱乐活动。</p>
+                        </div>
+                    </div>
+                `);
+            }
+            
+            // 根据日均消费给出建议
+            if (dailyExpense > 200) {
+                tips.push(`
+                    <div class="p-3 bg-yellow-50 rounded-md flex items-start">
+                        <i class="fa fa-calendar text-yellow-500 mt-1 mr-2"></i>
+                        <div>
+                            <p class="text-sm font-medium text-yellow-700">日均消费较高</p>
+                            <p class="text-xs text-yellow-600 mt-1">您的日均消费为${formatCurrency(dailyExpense)}，建议制定详细的每日预算，并严格执行。</p>
+                        </div>
+                    </div>
+                `);
+            } else if (dailyExpense < 50) {
+                tips.push(`
+                    <div class="p-3 bg-green-50 rounded-md flex items-start">
+                        <i class="fa fa-leaf text-green-500 mt-1 mr-2"></i>
+                        <div>
+                            <p class="text-sm font-medium text-green-700">消费非常节省</p>
+                            <p class="text-xs text-green-600 mt-1">您的日均消费仅为${formatCurrency(dailyExpense)}，非常节省！建议可以适当增加一些提升生活质量的支出。</p>
+                        </div>
+                    </div>
+                `);
+            }
+            
+            // 分析消费趋势
+            const monthlyExpenses = [];
+            for (let i = 5; i >= 0; i--) {
+                const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                const month = date.toISOString().slice(0, 7);
+                
+                const monthExpense = transactions
+                    .filter(t => t.type === 'expense' && t.date.startsWith(month))
+                    .reduce((sum, t) => sum + t.amount, 0);
+                
+                monthlyExpenses.push(monthExpense);
+            }
+            
+            // 检查是否有上升趋势
+            const hasUpwardTrend = monthlyExpenses.slice(1).every((expense, index) => expense > monthlyExpenses[index]);
+            if (hasUpwardTrend) {
+                tips.push(`
+                    <div class="p-3 bg-orange-50 rounded-md flex items-start">
+                        <i class="fa fa-line-chart text-orange-500 mt-1 mr-2"></i>
+                        <div>
+                            <p class="text-sm font-medium text-orange-700">消费呈上升趋势</p>
+                            <p class="text-xs text-orange-600 mt-1">您的消费在过去几个月呈上升趋势，建议检查是否有不必要的开支，并适当控制。</p>
+                        </div>
+                    </div>
+                `);
+            }
+            
+            // 如果没有生成任何建议，显示通用建议
+            if (tips.length === 0) {
+                tips.push(`
+                    <div class="p-3 bg-blue-50 rounded-md flex items-start">
+                        <i class="fa fa-info-circle text-blue-500 mt-1 mr-2"></i>
+                        <p class="text-sm text-gray-700">您的消费习惯总体良好！建议继续保持，并考虑适当增加储蓄或投资，为未来做准备。</p>
+                    </div>
+                `);
+            }
+            
+            // 更新UI
+            container.innerHTML = tips.join('');
+        }
+    </script>
+</body>
+</html>
