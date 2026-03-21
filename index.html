@@ -691,10 +691,33 @@
             measurementId: "G-MQCBW1Q1T5"
         };
         
+        // 全局变量
+        let db, auth;
+        
         // 初始化 Firebase
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
-        const auth = firebase.auth();
+        if (typeof firebase !== 'undefined') {
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.firestore();
+            auth = firebase.auth();
+            console.log('Firebase 初始化成功');
+        } else {
+            console.error('Firebase SDK 加载失败');
+            // 创建模拟对象，确保代码能运行
+            window.firebase = {
+                firestore: () => ({
+                    collection: () => ({
+                        doc: () => ({
+                            get: async () => ({ exists: false }),
+                            set: async () => {}
+                        }),
+                        get: async () => ({ docs: [] })
+                    })
+                }),
+                auth: () => ({})
+            };
+            db = firebase.firestore();
+            auth = firebase.auth();
+        }
         
         // 用户数据
         let currentUser = null;
@@ -750,6 +773,8 @@
         function showAuth() {
             document.getElementById('auth-container').classList.remove('hidden');
             document.getElementById('app-container').classList.add('hidden');
+            // 重新绑定登录/注册事件
+            bindAuthEvents();
         }
         
         // 显示主应用
@@ -795,92 +820,111 @@
         // 加载用户数据
         async function loadUserData() {
             try {
-                // 从 Firestore 加载交易记录
-                const transactionsSnapshot = await db.collection('users').doc(currentUser.username).collection('transactions').get();
-                transactions = transactionsSnapshot.docs.map(doc => doc.data());
-                
-                // 从 Firestore 加载预算
-                const budgetSnapshot = await db.collection('users').doc(currentUser.username).collection('budgets').get();
-                budgets = budgetSnapshot.docs.map(doc => doc.data());
-                
-                // 从 Firestore 加载储蓄目标
-                const savingsSnapshot = await db.collection('users').doc(currentUser.username).collection('savingsGoal').get();
-                savingsSnapshot.forEach(doc => {
-                    savingsGoal[doc.id] = doc.data().amount;
-                });
-                
-                // 从 Firestore 加载发薪日设置
-                const paydaySnapshot = await db.collection('users').doc(currentUser.username).get();
-                if (paydaySnapshot.exists) {
-                    const data = paydaySnapshot.data();
-                    paydaySettings = data.paydaySettings || { payday: 15 };
-                } else {
-                    paydaySettings = { payday: 15 };
+                try {
+                    // 尝试从 Firestore 加载
+                    const transactionsSnapshot = await db.collection('users').doc(currentUser.username).collection('transactions').get();
+                    transactions = transactionsSnapshot.docs.map(doc => doc.data());
+                    
+                    const budgetSnapshot = await db.collection('users').doc(currentUser.username).collection('budgets').get();
+                    budgets = budgetSnapshot.docs.map(doc => doc.data());
+                    
+                    const savingsSnapshot = await db.collection('users').doc(currentUser.username).collection('savingsGoal').get();
+                    savingsGoal = {};
+                    savingsSnapshot.forEach(doc => {
+                        savingsGoal[doc.id] = doc.data().amount;
+                    });
+                    
+                    const paydaySnapshot = await db.collection('users').doc(currentUser.username).get();
+                    if (paydaySnapshot.exists) {
+                        const data = paydaySnapshot.data();
+                        paydaySettings = data.paydaySettings || { payday: 15 };
+                    } else {
+                        paydaySettings = { payday: 15 };
+                    }
+                    
+                    console.log('从 Firestore 加载数据成功');
+                    // 同时保存到本地作为备份
+                    localStorage.setItem(`transactions_${currentUser.username}`, JSON.stringify(transactions));
+                    localStorage.setItem(`budgets_${currentUser.username}`, JSON.stringify(budgets));
+                    localStorage.setItem(`savingsGoal_${currentUser.username}`, JSON.stringify(savingsGoal));
+                    localStorage.setItem(`paydaySettings_${currentUser.username}`, JSON.stringify(paydaySettings));
+                } catch (firebaseError) {
+                    console.log('Firebase 不可用，从本地存储加载数据');
+                    // 从本地存储加载
+                    transactions = JSON.parse(localStorage.getItem(`transactions_${currentUser.username}`)) || [];
+                    budgets = JSON.parse(localStorage.getItem(`budgets_${currentUser.username}`)) || [];
+                    savingsGoal = JSON.parse(localStorage.getItem(`savingsGoal_${currentUser.username}`)) || {};
+                    paydaySettings = JSON.parse(localStorage.getItem(`paydaySettings_${currentUser.username}`)) || { payday: 15 };
                 }
             } catch (error) {
                 console.error('加载数据失败:', error);
-                // 如果 Firestore 加载失败，尝试从 localStorage 加载
-                transactions = JSON.parse(localStorage.getItem(`transactions_${currentUser.username}`)) || [];
-                budgets = JSON.parse(localStorage.getItem(`budgets_${currentUser.username}`)) || [];
-                savingsGoal = JSON.parse(localStorage.getItem(`savingsGoal_${currentUser.username}`)) || {};
-                paydaySettings = JSON.parse(localStorage.getItem(`paydaySettings_${currentUser.username}`)) || { payday: 15 };
+                // 兜底方案：使用空数据
+                transactions = [];
+                budgets = [];
+                savingsGoal = {};
+                paydaySettings = { payday: 15 };
             }
         }
         
         // 保存用户数据
         async function saveUserData() {
             try {
-                // 保存交易记录到 Firestore
-                const batch = db.batch();
-                const transactionsRef = db.collection('users').doc(currentUser.username).collection('transactions');
-                
-                // 删除旧数据
-                const oldTransactions = await transactionsRef.get();
-                oldTransactions.docs.forEach(doc => batch.delete(doc.ref));
-                
-                // 添加新数据
-                transactions.forEach(t => {
-                    const docRef = transactionsRef.doc(t.id);
-                    batch.set(docRef, t);
-                });
-                
-                // 保存预算
-                const budgetsRef = db.collection('users').doc(currentUser.username).collection('budgets');
-                const oldBudgets = await budgetsRef.get();
-                oldBudgets.docs.forEach(doc => batch.delete(doc.ref));
-                budgets.forEach(b => {
-                    const docRef = budgetsRef.doc(b.id);
-                    batch.set(docRef, b);
-                });
-                
-                // 保存储蓄目标
-                const savingsRef = db.collection('users').doc(currentUser.username).collection('savingsGoal');
-                const oldSavings = await savingsRef.get();
-                oldSavings.docs.forEach(doc => batch.delete(doc.ref));
-                Object.keys(savingsGoal).forEach(month => {
-                    const docRef = savingsRef.doc(month);
-                    batch.set(docRef, { amount: savingsGoal[month] });
-                });
-                
-                // 保存发薪日设置
-                const userRef = db.collection('users').doc(currentUser.username);
-                batch.set(userRef, { 
-                    username: currentUser.username,
-                    password: currentUser.password,
-                    paydaySettings: paydaySettings,
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                }, { merge: true });
-                
-                await batch.commit();
-                
-                // 同时保存到 localStorage 作为备份
+                // 先保存到本地存储
                 localStorage.setItem(`transactions_${currentUser.username}`, JSON.stringify(transactions));
                 localStorage.setItem(`budgets_${currentUser.username}`, JSON.stringify(budgets));
                 localStorage.setItem(`savingsGoal_${currentUser.username}`, JSON.stringify(savingsGoal));
                 localStorage.setItem(`paydaySettings_${currentUser.username}`, JSON.stringify(paydaySettings));
+                
+                try {
+                    // 尝试保存到 Firestore
+                    const batch = db.batch();
+                    const transactionsRef = db.collection('users').doc(currentUser.username).collection('transactions');
+                    
+                    // 删除旧数据
+                    const oldTransactions = await transactionsRef.get();
+                    oldTransactions.docs.forEach(doc => batch.delete(doc.ref));
+                    
+                    // 添加新数据
+                    transactions.forEach(t => {
+                        const docRef = transactionsRef.doc(t.id);
+                        batch.set(docRef, t);
+                    });
+                    
+                    // 保存预算
+                    const budgetsRef = db.collection('users').doc(currentUser.username).collection('budgets');
+                    const oldBudgets = await budgetsRef.get();
+                    oldBudgets.docs.forEach(doc => batch.delete(doc.ref));
+                    budgets.forEach(b => {
+                        const docRef = budgetsRef.doc(b.id);
+                        batch.set(docRef, b);
+                    });
+                    
+                    // 保存储蓄目标
+                    const savingsRef = db.collection('users').doc(currentUser.username).collection('savingsGoal');
+                    const oldSavings = await savingsRef.get();
+                    oldSavings.docs.forEach(doc => batch.delete(doc.ref));
+                    Object.keys(savingsGoal).forEach(month => {
+                        const docRef = savingsRef.doc(month);
+                        batch.set(docRef, { amount: savingsGoal[month] });
+                    });
+                    
+                    // 保存发薪日设置
+                    const userRef = db.collection('users').doc(currentUser.username);
+                    batch.set(userRef, { 
+                        username: currentUser.username,
+                        password: currentUser.password,
+                        paydaySettings: paydaySettings,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    }, { merge: true });
+                    
+                    await batch.commit();
+                    console.log('数据保存到 Firestore 成功');
+                } catch (firebaseError) {
+                    console.log('Firebase 不可用，数据已保存到本地存储');
+                }
             } catch (error) {
                 console.error('保存数据失败:', error);
-                // 如果 Firestore 保存失败，只保存到 localStorage
+                // 兜底方案：只保存到本地存储
                 localStorage.setItem(`transactions_${currentUser.username}`, JSON.stringify(transactions));
                 localStorage.setItem(`budgets_${currentUser.username}`, JSON.stringify(budgets));
                 localStorage.setItem(`savingsGoal_${currentUser.username}`, JSON.stringify(savingsGoal));
@@ -1000,15 +1044,30 @@
             const password = document.getElementById('login-password').value;
             
             try {
-                // 从 Firestore 获取用户信息
-                const userDoc = await db.collection('users').doc(username).get();
+                let userData = null;
+                let userExists = false;
                 
-                if (!userDoc.exists) {
+                try {
+                    // 尝试从 Firestore 获取用户信息
+                    const userDoc = await db.collection('users').doc(username).get();
+                    userExists = userDoc.exists;
+                    if (userExists) {
+                        userData = userDoc.data();
+                    }
+                } catch (firebaseError) {
+                    console.log('Firebase 不可用，尝试从本地存储获取用户信息');
+                    // 从本地存储获取用户信息
+                    const localUsers = JSON.parse(localStorage.getItem('localUsers')) || {};
+                    if (localUsers[username]) {
+                        userExists = true;
+                        userData = localUsers[username];
+                    }
+                }
+                
+                if (!userExists) {
                     showToast('用户名不存在');
                     return;
                 }
-                
-                const userData = userDoc.data();
                 
                 if (userData.password !== password) {
                     showToast('密码错误');
@@ -1027,7 +1086,19 @@
                 showToast('登录成功');
             } catch (error) {
                 console.error('登录失败:', error);
-                showToast('登录失败，请检查网络连接');
+                // 即使出错，也尝试使用本地存储登录
+                const username = document.getElementById('login-username').value.trim();
+                const password = document.getElementById('login-password').value;
+                const localUsers = JSON.parse(localStorage.getItem('localUsers')) || {};
+                
+                if (localUsers[username] && localUsers[username].password === password) {
+                    currentUser = { username, password };
+                    localStorage.setItem('currentUser', JSON.stringify(currentUser));
+                    await showApp();
+                    showToast('登录成功（本地模式）');
+                } else {
+                    showToast('登录失败，请检查用户名和密码');
+                }
             }
         }
         
@@ -1048,21 +1119,42 @@
             }
             
             try {
-                // 检查用户是否已存在
-                const userDoc = await db.collection('users').doc(username).get();
+                let userExists = false;
                 
-                if (userDoc.exists) {
+                try {
+                    // 尝试从 Firestore 检查用户是否存在
+                    const userDoc = await db.collection('users').doc(username).get();
+                    userExists = userDoc.exists;
+                } catch (firebaseError) {
+                    console.log('Firebase 不可用，尝试从本地存储检查用户');
+                    // 从本地存储检查用户
+                    const localUsers = JSON.parse(localStorage.getItem('localUsers')) || {};
+                    userExists = !!localUsers[username];
+                }
+                
+                if (userExists) {
                     showToast('用户名已存在');
                     return;
                 }
                 
-                // 创建新用户
-                await db.collection('users').doc(username).set({
+                // 创建用户数据
+                const userData = {
                     username: username,
                     password: password,
                     createdAt: new Date().toISOString(),
                     paydaySettings: { payday: 15 }
-                });
+                };
+                
+                try {
+                    // 尝试保存到 Firestore
+                    await db.collection('users').doc(username).set(userData);
+                } catch (firebaseError) {
+                    console.log('Firebase 不可用，保存到本地存储');
+                    // 保存到本地存储
+                    const localUsers = JSON.parse(localStorage.getItem('localUsers')) || {};
+                    localUsers[username] = userData;
+                    localStorage.setItem('localUsers', JSON.stringify(localUsers));
+                }
                 
                 // 自动登录
                 currentUser = { 
@@ -1076,7 +1168,26 @@
                 showToast('注册成功');
             } catch (error) {
                 console.error('注册失败:', error);
-                showToast('注册失败，请检查网络连接');
+                // 即使出错，也尝试在本地注册
+                const username = document.getElementById('register-username').value.trim();
+                const password = document.getElementById('register-password').value;
+                const localUsers = JSON.parse(localStorage.getItem('localUsers')) || {};
+                
+                if (!localUsers[username]) {
+                    localUsers[username] = {
+                        username: username,
+                        password: password,
+                        createdAt: new Date().toISOString(),
+                        paydaySettings: { payday: 15 }
+                    };
+                    localStorage.setItem('localUsers', JSON.stringify(localUsers));
+                    currentUser = { username, password };
+                    localStorage.setItem('currentUser', JSON.stringify(currentUser));
+                    await showApp();
+                    showToast('注册成功（本地模式）');
+                } else {
+                    showToast('注册失败，用户名已存在');
+                }
             }
         }
         
